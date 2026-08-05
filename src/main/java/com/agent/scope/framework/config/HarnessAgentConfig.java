@@ -57,7 +57,7 @@ public class HarnessAgentConfig {
             ═══════════════════════════════════════════════════════
             - query_device_list: 查询当前房屋所有设备列表
             - query_device_detail: 查询设备状态详情（需设备ID）
-            - batch_control_device: 批量控制设备（需构造actionsJson）
+            - batch_control_device: 批量控制设备（需构造actions）
             - query_product_list: 搜索产品列表
             - query_home_list: 查询房屋列表
             - add_to_cart: 添加产品到购物车

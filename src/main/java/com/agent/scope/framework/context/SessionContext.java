@@ -1,6 +1,13 @@
 package com.agent.scope.framework.context;
 
+import com.agent.scope.framework.hdl.HdlHome;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
 import java.io.Serializable;
+import java.util.List;
 
 /**
  * 统一会话上下文 POJO —— SessionContext
@@ -24,46 +31,89 @@ import java.io.Serializable;
  * @author agent-scope-start
  * @since 2.0.0
  */
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class SessionContext implements Serializable {
 
-    /** 序列化版本号 */
+    /**
+     * 序列化版本号
+     */
     private static final long serialVersionUID = 1L;
 
-    /** 用户 ID */
+    /**
+     * 用户 ID
+     */
     private String userId;
 
-    /** 当前房屋 ID */
+    /**
+     * 当前房屋 ID
+     */
     private String houseId;
 
-    /** 组织 ID（多租户隔离维度） */
+    /**
+     * 组织 ID（多租户隔离维度）
+     */
     private String orgId;
 
-    /** 会话 ID */
+    /**
+     * 会话 ID
+     */
     private String sessionId;
 
-    /** 用户昵称 */
+    /**
+     * 用户昵称
+     */
     private String userName;
 
-    /** 登录名 */
+    /**
+     * 登录名
+     */
     private String loginName;
 
-    /** 访问令牌（调用外部 API 时携带） */
+    /**
+     * 访问令牌（调用外部 API 时携带）
+     */
     private String accessToken;
 
-    /** 刷新令牌（用于无感续期） */
+    /**
+     * 刷新令牌（用于无感续期）
+     */
     private String refreshToken;
 
-    /** 全链路追踪 ID（关联 OpenTelemetry） */
+    /**
+     * 全链路追踪 ID（关联 OpenTelemetry）
+     */
     private String traceId;
 
-    /** 请求来源（web/app/mini-program） */
+    /**
+     * 请求来源（web/app/mini-program）
+     */
     private String source;
 
+    private List<HdlHome> homeCache;
+
     /**
-     * 默认构造方法
+     * 会话 Token（HDL accessToken，用于调用 HDL API 鉴权）
      */
-    public SessionContext() {
-    }
+    private String sessionToken;
+
+    /**
+     * 当前选择的房屋 ID（设备控制、场景查询等需要）
+     */
+    private String currentHomeId;
+
+    /**
+     * 租户 ID（多租户隔离用）
+     */
+    private String tenantId;
+
+    /**
+     * 设备列表缓存键（避免重复查询 HDL API）
+     */
+    private String deviceCacheKey;
+
 
     /**
      * 构建会话上下文
@@ -80,87 +130,6 @@ public class SessionContext implements Serializable {
         this.accessToken = accessToken;
     }
 
-    // ==================== Getter / Setter ====================
-
-    public String getUserId() {
-        return userId;
-    }
-
-    public void setUserId(String userId) {
-        this.userId = userId;
-    }
-
-    public String getHouseId() {
-        return houseId;
-    }
-
-    public void setHouseId(String houseId) {
-        this.houseId = houseId;
-    }
-
-    public String getOrgId() {
-        return orgId;
-    }
-
-    public void setOrgId(String orgId) {
-        this.orgId = orgId;
-    }
-
-    public String getSessionId() {
-        return sessionId;
-    }
-
-    public void setSessionId(String sessionId) {
-        this.sessionId = sessionId;
-    }
-
-    public String getUserName() {
-        return userName;
-    }
-
-    public void setUserName(String userName) {
-        this.userName = userName;
-    }
-
-    public String getLoginName() {
-        return loginName;
-    }
-
-    public void setLoginName(String loginName) {
-        this.loginName = loginName;
-    }
-
-    public String getAccessToken() {
-        return accessToken;
-    }
-
-    public void setAccessToken(String accessToken) {
-        this.accessToken = accessToken;
-    }
-
-    public String getRefreshToken() {
-        return refreshToken;
-    }
-
-    public void setRefreshToken(String refreshToken) {
-        this.refreshToken = refreshToken;
-    }
-
-    public String getTraceId() {
-        return traceId;
-    }
-
-    public void setTraceId(String traceId) {
-        this.traceId = traceId;
-    }
-
-    public String getSource() {
-        return source;
-    }
-
-    public void setSource(String source) {
-        this.source = source;
-    }
 
     /**
      * 构建 Builder 模式快速构造
@@ -174,6 +143,10 @@ public class SessionContext implements Serializable {
     /**
      * Builder 模式内部类
      */
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @lombok.Builder
     public static class Builder {
         private String userId;
         private String houseId;
@@ -185,56 +158,6 @@ public class SessionContext implements Serializable {
         private String refreshToken;
         private String traceId;
         private String source;
-
-        public Builder userId(String userId) {
-            this.userId = userId;
-            return this;
-        }
-
-        public Builder houseId(String houseId) {
-            this.houseId = houseId;
-            return this;
-        }
-
-        public Builder orgId(String orgId) {
-            this.orgId = orgId;
-            return this;
-        }
-
-        public Builder sessionId(String sessionId) {
-            this.sessionId = sessionId;
-            return this;
-        }
-
-        public Builder userName(String userName) {
-            this.userName = userName;
-            return this;
-        }
-
-        public Builder loginName(String loginName) {
-            this.loginName = loginName;
-            return this;
-        }
-
-        public Builder accessToken(String accessToken) {
-            this.accessToken = accessToken;
-            return this;
-        }
-
-        public Builder refreshToken(String refreshToken) {
-            this.refreshToken = refreshToken;
-            return this;
-        }
-
-        public Builder traceId(String traceId) {
-            this.traceId = traceId;
-            return this;
-        }
-
-        public Builder source(String source) {
-            this.source = source;
-            return this;
-        }
 
         public SessionContext build() {
             SessionContext ctx = new SessionContext();
@@ -252,16 +175,4 @@ public class SessionContext implements Serializable {
         }
     }
 
-    @Override
-    public String toString() {
-        return "SessionContext{" +
-                "userId='" + userId + '\'' +
-                ", houseId='" + houseId + '\'' +
-                ", orgId='" + orgId + '\'' +
-                ", sessionId='" + sessionId + '\'' +
-                ", userName='" + userName + '\'' +
-                ", loginName='" + loginName + '\'' +
-                ", traceId='" + traceId + '\'' +
-                '}';
-    }
 }

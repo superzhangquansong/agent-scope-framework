@@ -101,8 +101,8 @@ scope:
       api-key: sk-2f8c9cb9fa9f4a78a2e7133b391ca6a2
       base-url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
       stream: true
-      enable-thinking: true
-      thinking-budget: 4096
+      enable-thinking: false
+      thinking-budget: 1024
       temperature: 0.3
       parallel-tool-calls: true
       vision-enabled: true

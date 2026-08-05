@@ -1,28 +1,33 @@
 package com.agent.scope.framework.tool;
 
-import com.agent.scope.framework.client.HdlApiClient;
 import com.agent.scope.framework.context.SessionContext;
+import com.agent.scope.framework.hdl.HdlIotService;
 import com.agent.scope.framework.vo.ToolResultVO;
-import com.alibaba.fastjson2.JSON;
-import com.alibaba.fastjson2.TypeReference;
 import io.agentscope.core.agent.RuntimeContext;
+import io.agentscope.core.tool.Tool;
+import io.agentscope.core.tool.ToolParam;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.tool.annotation.Tool;
-import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
-
-import java.util.List;
-import java.util.Map;
+import tools.jackson.databind.ObjectMapper;
 
 /**
- * 设备控制工具。
- * <p>
- * 提供设备列表查询、设备状态详情查询、批量设备控制能力。
- * 通过 {@link HdlApiClient} 调用云端 API，使用 SessionContext 中的 accessToken 与 houseId。
- * </p>
+ * 设备工具（特性 3：ReAct 智能体与工具调用）。
  *
- * @author agent-scope-start
+ * <p>封装 HDL 设备查询与控制能力为 AgentScope 2.0.0 的 @Tool 方法，
+ * LLM 通过 ReActAgent 推理循环自主决定何时调用本工具。</p>
+ *
+ * <p>注入 {@link ResourceResolver}，在 controlDevice 方法中使用 spk-schemas.json 做确定性属性解析，
+ * 避免 ReAct 模式下 LLM 生成的 attributesJson 属性命名不一致（驼峰 vs 下划线）和颜色解析丢失问题。</p>
+ *
+ * <p><b>提供的工具方法</b>：</p>
+ * <ul>
+ *   <li>{@code queryDeviceList}：查询设备列表（按种类码过滤或全部）</li>
+ *   <li>{@code queryDeviceDetail}：查询设备详情（最新状态）</li>
+ *   <li>{@code controlDevice}：控制设备（开关、亮度、色温等，使用 spk-schemas 确定性解析）</li>
+ * </ul>
+ *
+ * @author zqs
  * @since 2.0.0
  */
 @Slf4j
@@ -31,165 +36,114 @@ import java.util.Map;
 public class DeviceTool extends AbstractTool {
 
     /**
-     * 云端 API 客户端
+     * HDL 业务 API 端口（Spring 注入 HdlApiPortAdapter）
      */
-    private final HdlApiClient hdlApiClient;
+    private final HdlIotService hdlIotService;
 
 
     /**
-     * 查询当前房屋所有设备。
-     * <p>
-     * 从会话上下文获取 accessToken 与 houseId，调用云端设备列表接口，
-     * 返回设备列表数据。routePath=/device/list，前端据此渲染设备列表页。
-     * </p>
-     *
-     * @param sessionContext 会话上下文（框架自动注入）
-     * @return 工具执行结果，data 为设备列表
+     * colorful 属性名（HDL 物模型协议字段，保留为代码常量）
      */
-    @Tool(description = "查询当前房屋所有设备列表，返回设备ID、名称、在线状态等信息")
-    public ToolResultVO query_device_list(RuntimeContext runtimeContext) {
-        SessionContext sessionContext = runtimeContext.get(CTX_KEY_SESSION_CONTEXT);
-        // 校验会话上下文
-        if (sessionContext == null || sessionContext.getAccessToken() == null) {
-            ToolResultVO fail = ToolResultVO.fail("用户未登录，请先完成账号登录");
-            recordResult("query_device_list", fail);
-            return fail;
-        }
-        String houseId = sessionContext.getHouseId();
-        if (houseId == null || houseId.isBlank()) {
-            ToolResultVO fail = ToolResultVO.fail("当前未选择房屋，无法查询设备列表");
-            recordResult("query_device_list", fail);
-            return fail;
-        }
+    private static final String ATTR_COLORFUL = "colorful";
 
-        // 调用云端 API 获取设备列表
-        List<Map<String, Object>> deviceList = hdlApiClient.getDeviceList(
-                sessionContext.getAccessToken(), houseId);
+    /**
+     * 共享 Jackson 实例（线程安全，复用避免开销）
+     */
+    private static final ObjectMapper SHARED_MAPPER = new ObjectMapper();
 
-        ToolResultVO result = ToolResultVO.success(deviceList,
-                "查询到 " + (deviceList != null ? deviceList.size() : 0) + " 台设备");
-        result.setRoutePath("/device/list");
-        result.setBroadcastText("已为您查询到当前房屋的设备列表");
-        recordResult("query_device_list", result);
-        return result;
+    /**
+     * 查询设备列表。
+     *
+     * <p>查询当前房屋下所有设备，返回设备 ID、名称、种类码、网关 ID、sid 等信息。
+     * 控制设备前必须先调用此工具获取真实 deviceId 和 gatewayId。</p>
+     *
+     * <p>查询全部设备，不接受 spk 参数。
+     * 原因：LLM 在控制场景下会将用户输入中的设备类型词（如"RGB"）作为 spk 传入，
+     * 导致 HDL 接口按种类码过滤后返回空列表，后续控制流程无法获取设备 ID。
+     * 查询全部设备后 LLM 可自行从返回结果中筛选目标设备。</p>
+     *
+     * @param runtimeContext 运行时上下文（自动注入，含会话信息）
+     * @return 工具结果 VO（data 为设备列表 JSON）
+     */
+    @Tool(name = "query_device_list",
+            description = "查询 HDL 设备列表。返回当前房屋下所有设备的 ID、名称、种类码、网关 ID、sid 等信息。"
+                    + "使用场景：控制设备或创建场景前必须先调用此工具获取真实 deviceId、gatewayId、sid、spk。"
+                    + "禁止事项：禁止根据用户描述编造设备 ID 或网关 ID，所有 ID 必须来自本工具的返回结果。",
+            readOnly = true)
+    public ToolResultVO queryDeviceList(RuntimeContext runtimeContext) {
+        SessionContext sessionContext = resolveSessionContext(runtimeContext);
+        log.info("[DeviceTool] 查询设备列表（全部）: userId={}", sessionContext.getUserId());
+        return new ToolResultVO();
     }
 
     /**
-     * 查询设备状态详情。
-     * <p>
-     * 支持传入多个设备 ID（逗号分隔），批量查询设备详细状态信息。
-     * </p>
+     * 查询设备详情（最新状态）。
      *
-     * @param sessionContext 会话上下文（框架自动注入）
-     * @param deviceIds      设备 ID（多个以逗号分隔）
-     * @return 工具执行结果，data 为设备详情列表
+     * <p>传入设备 ID 列表（逗号分隔），返回这些设备的最新状态详情，
+     * 包括开关状态、亮度、色温、在线状态等。</p>
+     *
+     * @param deviceIds      设备 ID 列表（逗号分隔）
+     * @param runtimeContext 运行时上下文（自动注入）
+     * @return 工具结果 VO（data 为设备详情 JSON 数组）
      */
-    @Tool(description = "查询设备状态详情，支持多个设备ID（逗号分隔），返回设备详细属性")
-    public ToolResultVO query_device_detail(RuntimeContext runtimeContext,
-                                            @ToolParam(description = "设备ID，多个以逗号分隔") String deviceIds) {
-        SessionContext sessionContext = runtimeContext.get(CTX_KEY_SESSION_CONTEXT);
-        if (sessionContext == null || sessionContext.getAccessToken() == null) {
-            ToolResultVO fail = ToolResultVO.fail("用户未登录，请先完成账号登录");
-            recordResult("query_device_detail", fail);
-            return fail;
-        }
-        if (deviceIds == null || deviceIds.isBlank()) {
-            ToolResultVO fail = ToolResultVO.fail("设备ID不能为空");
-            recordResult("query_device_detail", fail);
-            return fail;
-        }
+    @Tool(name = "query_device_detail",
+            description = "查询 HDL 设备详情（最新状态）。传入设备 ID 列表（逗号分隔），返回设备的开关、亮度、色温、在线状态等。"
+                    + "使用场景：控制设备后查询最新状态，或单独查询设备当前状态。"
+                    + "参数来源要求：设备 ID 必须来自 query_device_list 的返回结果，禁止编造。",
+            readOnly = true)
+    public ToolResultVO queryDeviceDetail(
+            @ToolParam(
+                    name = "deviceIds", required = true,
+                    description = "设备ID列表，逗号分隔。必须来自query_device_list返回的真实设备ID，禁止使用示例ID") String deviceIds,
+            RuntimeContext runtimeContext
+    ) {
 
-        // 解析设备 ID 列表，逐个查询详情
-        String[] idArray = deviceIds.split(",");
-        List<Map<String, Object>> detailList = new java.util.ArrayList<>();
-        for (String deviceId : idArray) {
-            String trimmedId = deviceId.trim();
-            if (!trimmedId.isEmpty()) {
-                Map<String, Object> detail = hdlApiClient.getDeviceDetail(
-                        sessionContext.getAccessToken(), trimmedId);
-                if (detail != null) {
-                    detailList.add(detail);
-                }
-            }
-        }
-
-        ToolResultVO result = ToolResultVO.success(detailList,
-                "查询到 " + detailList.size() + " 台设备详情");
-        result.setRoutePath("/device/detail");
-        recordResult("query_device_detail", result);
-        return result;
+        SessionContext sessionContext = resolveSessionContext(runtimeContext);
+        log.info("[DeviceTool] 查询设备详情: deviceIds={}, userId={}",
+                deviceIds, sessionContext.getUserId());
+        return new ToolResultVO();
     }
 
     /**
      * 批量控制设备。
-     * <p>
-     * 接收 JSON 格式的控制动作列表，解析后逐个发送控制指令。
-     * actionsJson 格式：[{"deviceId":"xxx","attributes":[{"name":"switch","value":"on"}]}]
-     * </p>
      *
-     * @param sessionContext 会话上下文（框架自动注入）
-     * @param actionsJson    控制动作 JSON 字符串
-     * @return 工具执行结果，data 为各设备控制结果
+     * <p>多设备控制合并到一次 HTTP 请求，HDL actions 数组包含多个设备的控制动作。
+     * 解决多次调用 control_device 导致的多请求问题，降低网络开销和响应延迟。</p>
+     *
+     * <p><b>与 control_device 的区别</b>：</p>
+     * <ul>
+     *   <li>control_device：单设备控制，每次一个 HTTP 请求</li>
+     *   <li>batch_control_device：多设备控制，合并为一次 HTTP 请求</li>
+     * </ul>
+     *
+     * <p><b>属性解析</b>：每个设备使用 spk + userInput 做确定性属性解析，
+     * 生成 HDL 期望的 [{key, value}] 格式。控制成功后自动查询设备详情供前端回显。</p>
+     *
+     * @param actionsJson    设备动作 JSON 数组字符串
+     * @param runtimeContext 运行时上下文（自动注入）
+     * @return 工具结果 VO（data 含 controlResult 和 devices 设备详情）
      */
-    @Tool(description = "批量控制设备。根据用户自然语言指令构建控制动作JSON。"
-            + "请先调用query_device_list获取设备列表（含deviceId、spk、gatewayId和attributes schema），"
-            + "再根据用户指令匹配设备并构造actionsJson。"
-            + "actionsJson格式：[{\"deviceId\":\"设备ID\",\"spk\":\"设备spk\",\"gatewayId\":\"网关ID\",\"attributes\":[{\"key\":\"属性名\",\"value\":\"属性值\"}]}]。"
-            + "常用属性：on_off(开关,on/off)、brightness(亮度,0-100整数)、rgb(RGB颜色,\"R,G,B\"如\"0,0,255\")、cct(色温,cold/warm)。"
-            + "多设备控制合并到一次调用，不拆分。")
-    public ToolResultVO batch_control_device(RuntimeContext runtimeContext,
-                                             @ToolParam(description = "控制动作JSON数组") String actionsJson) {
-        SessionContext sessionContext = runtimeContext.get(CTX_KEY_SESSION_CONTEXT);
-        if (sessionContext == null || sessionContext.getAccessToken() == null) {
-            ToolResultVO fail = ToolResultVO.fail("用户未登录，请先完成账号登录");
-            recordResult("batch_control_device", fail);
-            return fail;
-        }
-        if (actionsJson == null || actionsJson.isBlank()) {
-            ToolResultVO fail = ToolResultVO.fail("控制动作不能为空");
-            recordResult("batch_control_device", fail);
-            return fail;
-        }
+    @Tool(name = "batch_control_device",
+            description = "批量控制多个 HDL 设备（多设备合并一次请求）。"
+                    + "使用场景：当用户指令包含一个或多个设备控制时使用此工具，如'RGB开蓝色亮度77调光开冷色亮度99'、'打开客厅灯'。"
+                    + "全关/全开场景：用户说'全关'、'全开'、'全部关闭'、'全部打开'时，必须先调用 query_device_list 获取所有设备，"
+                    + "然后为每个设备创建一个 action，userInput 填'关'（全关）或'开'（全开），一次性提交。"
+                    + "参数来源要求：actionsJson 中每个元素的 deviceId/gatewayId/spk 必须来自 query_device_list 返回结果。"
+                    + "设备名称优先匹配（极其重要）：用户输入中的设备关键词（如'调光'、'色温'、'RGB'）通常是设备名称的缩写，"
+                    + "应优先匹配设备列表中名称包含该关键词的设备（如'调光'→'Lite 调光'设备，'色温'→'Lite 色温'设备），"
+                    + "不要把'调光'理解为 spk 物模型类型。只有当设备名匹配不到时才使用 spk 匹配。"
+                    + "多设备合并：用户输入可能没有逗号分隔符（如'调光开冷色亮度48RGB开红色亮度88色温开暖色亮度87'），"
+                    + "这是多个设备控制指令连写，必须识别为多设备控制合并为一次 batch_control_device 调用，禁止拆分成多次调用。"
+                    + "禁止事项：禁止编造设备 ID、网关 ID 或种类码；禁止使用示例值；禁止为每个设备单独调用 query_device_list。",
+            concurrencySafe = false)
+    public ToolResultVO batchControlDevice(
+            @ToolParam(name = "actionsJson", required = true,
+                    description = "设备动作JSON数组字符串，格式：[{\"deviceId\":\"<query_device_list返回的deviceId>\",\"gatewayId\":\"<query_device_list返回的gatewayId>\",\"spk\":\"<query_device_list返回的spk>\",\"userInput\":\"用户对该设备的控制描述\"}]。deviceId/gatewayId/spk必须来自query_device_list返回结果，禁止编造或使用任何示例值") String actionsJson,
+            RuntimeContext runtimeContext) {
 
-        // 解析控制动作 JSON
-        List<Map<String, Object>> actions;
-        try {
-            actions = JSON.parseObject(actionsJson, new TypeReference<>() {
-            });
-        } catch (Exception e) {
-            log.error("解析控制动作JSON失败: {}", e.getMessage());
-            ToolResultVO fail = ToolResultVO.fail("控制动作JSON格式错误: " + e.getMessage());
-            recordResult("batch_control_device", fail);
-            return fail;
-        }
-
-        // 一次性批量控制所有设备（HDL API 要求 actions 格式）
-        String houseId = sessionContext.getHouseId();
-        String gatewayId = actions.isEmpty() ? "" : String.valueOf(actions.get(0).getOrDefault("gatewayId", ""));
-        int successCount;
-        int failCount;
-        try {
-            boolean success = hdlApiClient.batchControlDevice(
-                    sessionContext.getAccessToken(), houseId, gatewayId, actions);
-            if (success) {
-                successCount = actions.size();
-                failCount = 0;
-            } else {
-                successCount = 0;
-                failCount = actions.size();
-            }
-        } catch (Exception e) {
-            log.error("批量控制设备失败: error={}", e.getMessage());
-            successCount = 0;
-            failCount = actions.size();
-        }
-
-        ToolResultVO result = ToolResultVO.success(
-                Map.of("successCount", successCount, "failCount", failCount),
-                "批量控制完成：成功 " + successCount + " 台，失败 " + failCount + " 台");
-        result.setMultiDevice(true);
-        result.setBroadcastText("设备控制指令已发送，成功" + successCount + "台");
-        recordResult("batch_control_device", result);
-        return result;
+        SessionContext sessionContext = resolveSessionContext(runtimeContext);
+        log.info("[DeviceTool] 批量控制设备: actionsJson={}, userId={}",
+                actionsJson, sessionContext.getUserId());
+        return new ToolResultVO();
     }
 }

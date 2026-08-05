@@ -26,7 +26,7 @@
         <!-- 框架版本 -->
         <spring-cloud.version>2025.1.0</spring-cloud.version>
         <spring-cloud-alibaba.version>2025.1.0.0</spring-cloud-alibaba.version>
-        <spring-ai.version>2.0.0</spring-ai.version>
+<!--        <spring-ai.version>2.0.0</spring-ai.version>-->
         <agentscope.version>2.0.0</agentscope.version>
         <scope-core.version>2.0.0</scope-core.version>
 
@@ -74,13 +74,13 @@
             </dependency>
 
             <!-- Spring AI -->
-            <dependency>
+            <!--<dependency>
                 <groupId>org.springframework.ai</groupId>
                 <artifactId>spring-ai-bom</artifactId>
                 <version>${spring-ai.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
-            </dependency>
+            </dependency>-->
 
             <!-- Scope 核心组件（私有仓库，部署时通过内部 Nexus 拉取） -->
 
@@ -195,10 +195,10 @@
         </dependency>
 
         <!-- Spring AI Core（@Tool / @ToolParam 注解） -->
-        <dependency>
+        <!--<dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-model</artifactId>
-        </dependency>
+        </dependency>-->
 
         <!-- AgentScope 模型扩展：DashScope（通义千问） -->
         <dependency>

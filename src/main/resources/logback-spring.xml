@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    ai-scope-core 日志配置
+    ====================================================================
+    格式说明（方便排查问题）：
+      时间 | 线程 | traceId | 级别 | 应用名 | 类名.方法名(文件:行号) | 消息
+
+    示例输出：
+      2026-08-02 15:30:45.123 [http-nio-8788-exec-1] [traceId=abc123,spanId=def456] INFO  ai-scope-core | c.s.c.w.c.ChatController.send(ChatController.java:75) - [REQ] 收到聊天请求
+      2026-08-02 15:30:45.456 [http-nio-8788-exec-1] [traceId=abc123,spanId=def456] INFO  ai-scope-core | c.s.c.w.c.ChatController.send(ChatController.java:95) - [RESP] 聊天请求处理完成, 耗时=333ms
+
+    traceId/spanId 由 Spring Boot Micrometer Tracing 自动注入 MDC（需 management.tracing 配合）。
+    ====================================================================
+-->
+<configuration>
+
+    <!-- 应用名（从 spring.application.name 读取，兜底 ai-scope-core） -->
+    <springProperty scope="context" name="APP_NAME" source="spring.application.name"
+                    defaultValue="ai-scope-core"/>
+
+    <!-- 服务端口（从 server.port 读取，兜底 8788） -->
+    <springProperty scope="context" name="SERVER_PORT" source="server.port"
+                    defaultValue="8788"/>
+
+    <!-- 控制台日志格式：时间 | 线程 | [traceId] | 级别 | 应用名:端口 | 类名.方法名(文件:行号) | 消息 -->
+    <property name="CONSOLE_LOG_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%t] %highlight([%X{traceId:-}]) %highlight(%-5level) %magenta(${APP_NAME}:${SERVER_PORT}) | %cyan(%logger{36}.%M\(%F:%L\)) - %msg%n"/>
+
+    <!-- 文件日志格式（不含颜色转义码，便于 grep/ELK 采集） -->
+    <property name="FILE_LOG_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%t] [%X{traceId:-}] %-5level ${APP_NAME}:${SERVER_PORT} | %logger{36}.%M\(%F:%L\) - %msg%n"/>
+
+    <!-- 日志文件存储路径 -->
+    <property name="LOG_PATH" value="logs"/>
+
+    <!-- ==================== 控制台输出 ==================== -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${CONSOLE_LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- ==================== 文件输出（滚动） ==================== -->
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_PATH}/ai-scope-core.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <!-- 按天滚动，单文件最大 100MB，保留 30 天 -->
+            <fileNamePattern>${LOG_PATH}/ai-scope-core.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+            <maxFileSize>100MB</maxFileSize>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>5GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>${FILE_LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- ==================== 错误日志单独文件 ==================== -->
+    <appender name="ERROR_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_PATH}/ai-scope-core-error.log</file>
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>ERROR</level>
+        </filter>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_PATH}/ai-scope-core-error.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+            <maxFileSize>50MB</maxFileSize>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>2GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>${FILE_LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- ==================== 启动横幅：打印项目名/端口/时间 ==================== -->
+    <!-- 在应用启动完成时打印醒目的启动信息 -->
+    <appender name="STARTUP_BANNER" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} | %msg%n</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- ==================== 日志级别配置 ==================== -->
+
+    <!-- 项目代码：DEBUG 级别便于排查问题（生产环境可调整为 INFO） -->
+    <logger name="com.scope.core" level="DEBUG" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+        <appender-ref ref="ERROR_FILE"/>
+    </logger>
+
+    <!-- AgentScope 框架 -->
+    <logger name="io.agentscope" level="INFO" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+    </logger>
+
+    <!-- Spring 框架 -->
+    <logger name="org.springframework" level="INFO" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+    </logger>
+
+    <!-- Tomcat 线程池/连接器 -->
+    <logger name="org.apache.catalina" level="INFO"/>
+    <logger name="org.apache.coyote" level="INFO"/>
+
+    <!-- MyBatis SQL 日志（DEBUG 打印 SQL 语句和参数） -->
+    <logger name="com.scope.core.mapper" level="DEBUG"/>
+
+    <!-- HTTP 客户端日志 -->
+    <logger name="org.apache.hc" level="INFO"/>
+
+    <!-- 第三方库降噪 -->
+    <logger name="io.netty" level="WARN"/>
+    <logger name="com.zaxxer.hikari" level="WARN"/>
+    <logger name="com.alibaba.nacos" level="WARN"/>
+    <logger name="io.undertow" level="WARN"/>
+
+    <!-- ==================== 根日志 ==================== -->
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+        <appender-ref ref="ERROR_FILE"/>
+    </root>
+
+</configuration>
