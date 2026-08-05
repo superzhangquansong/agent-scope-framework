@@ -1,0 +1,223 @@
+# ===================================================================
+# AgentScope Java 2.0 GA 企业级多智能体应用 —— 主配置文件
+# ===================================================================
+# 配置策略：
+# 1. 本地静态配置作为降级兜底，Nacos 不可达时自动读取此文件
+# 2. 所有 scope.* 配置项均可通过 Nacos 动态刷新，修改后 30 秒内生效
+# 3. 禁止生成 .agentscope 本地文件夹
+# ===================================================================
+server:
+  port: 8788
+  tomcat:
+    threads:
+      max: 500
+      min-spare: 50
+    accept-count: 100
+    max-connections: 10000
+    connection-timeout: 30000
+
+spring:
+  application:
+    name: agent-scope-framework
+
+  # 文件上传限制（支持大 PDF/Word 文档上传）
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
+      file-size-threshold: 0
+
+  # MySQL 数据源（独立数据库 ai_scope_core）
+  datasource:
+    url: jdbc:mysql://127.0.0.1:30100/ai_scope_core?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: root
+    password: Hdl@1985..
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  # Redis（独立 DB 索引 5，避免与其他应用 Key 冲突）
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 30101
+      password: hdl778899
+      database: 5
+      timeout: 5000ms
+      lettuce:
+        pool:
+          max-active: 50
+          max-idle: 20
+          min-idle: 5
+
+  # Spring Cloud 配置
+  cloud:
+    compatibility-verifier:
+      enabled: false
+    nacos:
+      discovery:
+        server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:30104}
+        namespace: ${NACOS_NAMESPACE:scope-dev}
+        username: ${NACOS_USERNAME:nacos}
+        password: ${NACOS_PASSWORD:nacos}
+        group: ${NACOS_GROUP:SCOPE_GROUP}
+        register-enabled: ${NACOS_REGISTER_ENABLED:false}
+      config:
+        server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:30104}
+        namespace: ${NACOS_NAMESPACE:scope-dev}
+        username: ${NACOS_USERNAME:nacos}
+        password: ${NACOS_PASSWORD:nacos}
+        group: ${NACOS_GROUP:SCOPE_GROUP}
+        refresh-enabled: true
+        file-extension: yml
+
+  # 排除 MCP 客户端自动配置（Spring AI 2.0 与 MCP spec 库版本不兼容）
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.mcp.client.common.autoconfigure.McpClientAutoConfiguration
+
+  # 通过 spring.config.import 加载 Nacos 配置（不可达时降级）
+  config:
+    import:
+      - "optional:nacos:application-config.yml?group=SCOPE_GROUP"
+
+  # Jackson 序列化配置（Spring Boot 4.x 使用 Jackson 3.x，部分枚举常量已变更）
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      fail-on-empty-beans: false
+
+# ===================================================================
+# AgentScope 核心配置
+# ===================================================================
+scope:
+  agentscope:
+    # DashScope（通义千问）模型配置
+    dashscope:
+      api-key: sk-2f8c9cb9fa9f4a78a2e7133b391ca6a2
+      base-url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+      stream: true
+      enable-thinking: true
+      thinking-budget: 4096
+      temperature: 0.3
+      parallel-tool-calls: true
+      vision-enabled: true
+
+    # Ollama（本地模型）配置
+    ollama:
+      base-url: http://127.0.0.1:11434
+      chat-model: qwen2.5:1.5b
+      temperature: 0.3
+      num-ctx: 32768
+      num-predict: 2048
+
+  # HDL 云端 API 配置
+  hdl-api:
+    base-url: https://gateway.hdlcontrol.com
+    app-key: EISTBZLX
+    app-secret: EISTBZMNEISTBZND
+    connect-timeout-ms: 8000
+    read-timeout-ms: 15000
+    auth-error-codes: 401,10001,40001,403,4010,4011,10002,20001,4013
+
+  # Qdrant 向量检索配置（独立 collection）
+  qdrant:
+    host: 127.0.0.1
+    port: 30106
+    grpc-port: 30107
+    collection-name: scope_knowledge
+    vector-size: 1536
+
+  # MinIO 对象存储配置（独立 bucket）
+  minio:
+    endpoint: http://127.0.0.1:30102
+    access-key: hdl-minio-user
+    secret-key: hdl-minio-pass
+    bucket: ai-scope-workspace
+
+  # Embedding 配置（DashScope text-embedding-v2）
+  embedding:
+    provider: dashscope
+    model: text-embedding-v2
+    api-key: sk-2f8c9cb9fa9f4a78a2e7133b391ca6a2
+    endpoint: https://dashscope.aliyuncs.com/api/v1/services/embeddings/text-embedding/text-embedding
+    vector-size: 1536
+
+  # 测试账号配置
+  test-account:
+    login-name: 19210818109
+    login-pwd: "123456"
+
+# ===================================================================
+# MyBatis-Plus 配置
+# ===================================================================
+mybatis-plus:
+  mapper-locations: classpath:mapper/**/*.xml
+  type-aliases-package: com.scope.starter.entity
+  global-config:
+    db-config:
+      id-type: auto
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+  configuration:
+    map-underscore-to-camel-case: true
+    cache-enabled: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+# ===================================================================
+# 可观测性配置（OpenTelemetry + Prometheus）
+# ===================================================================
+management:
+  tracing:
+    sampling:
+      probability: 1.0
+  zipkin:
+    tracing:
+      endpoint: http://127.0.0.1:9411/api/v2/spans
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,env
+  endpoint:
+    health:
+      show-details: always
+    prometheus:
+      enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+# ===================================================================
+# Resilience4j 限流熔断配置
+# ===================================================================
+resilience4j:
+  ratelimiter:
+    instances:
+      model-call:
+        limit-for-period: 50
+        limit-refresh-period: 1s
+        timeout-duration: 0
+  circuitbreaker:
+    instances:
+      hdl-api:
+        register-health-indicator: true
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 3
+
+# ===================================================================
+# 日志配置
+# ===================================================================
+logging:
+  level:
+    root: INFO
+    com.scope.starter: DEBUG
+    io.agentscope: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{traceId}] %-5level %logger{36} - %msg%n"
