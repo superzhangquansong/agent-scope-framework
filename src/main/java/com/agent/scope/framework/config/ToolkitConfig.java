@@ -1,15 +1,18 @@
 package com.agent.scope.framework.config;
 
-import com.agent.scope.framework.tool.AbstractTool;
+import io.agentscope.core.tool.Tool;
 import io.agentscope.core.tool.Toolkit;
-import io.agentscope.core.tool.builtin.TodoTools;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * AgentScope 2.0 GA 核心共享 Bean 装配类。
@@ -32,6 +35,8 @@ import java.util.List;
 @ConditionalOnProperty(prefix = "scope.core-beans", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class ToolkitConfig {
 
+    private final ApplicationContext applicationContext;
+
     /**
      * 动态注册所有继承 AbstractTool 的 Spring Bean。
      * <p>
@@ -39,7 +44,7 @@ public class ToolkitConfig {
      * 新增工具只需添加 @Component，无需修改此配置。
      * </p>
      */
-    @Bean
+    /*@Bean
     public Toolkit toolkit(List<AbstractTool> tools) {
         log.info("[CoreBeans] 初始化 Toolkit，开始动态注册工具");
         Toolkit toolkit = new Toolkit();
@@ -56,5 +61,52 @@ public class ToolkitConfig {
 
         log.info("[CoreBeans] Toolkit 初始化完成，共注册 {} 个业务工具", tools.size());
         return toolkit;
+    }*/
+    @Bean
+    public Toolkit toolkit() {
+        Toolkit toolkit = new Toolkit();
+        List<String> registeredBeanNames = new ArrayList<>();
+
+        // 从 Spring 容器获取所有 Bean
+        Map<String, Object> allBeans = applicationContext.getBeansOfType(Object.class);
+
+        // 遍历检查每个 Bean 是否含 @Tool 注解方法
+        for (Map.Entry<String, Object> entry : allBeans.entrySet()) {
+            Object bean = entry.getValue();
+            String beanName = entry.getKey();
+
+            // 跳过 Spring 框架内部 Bean（名称以 org.springframework 开头）
+            if (bean.getClass().getName().startsWith("org.springframework")) {
+                continue;
+            }
+
+            // 检查 Bean 类及其祖先类是否含 @Tool 注解方法
+            if (hasToolAnnotation(bean.getClass())) {
+                try {
+                    toolkit.registerTool(bean);
+                    registeredBeanNames.add(beanName);
+                } catch (Exception e) {
+                    log.warn("[ToolkitConfig] 注册 Tool Bean 失败: beanName={}, err={}",
+                            beanName, e.getMessage());
+                }
+            }
+        }
+
+        log.info("[ToolkitConfig] Toolkit 装配完成，已注册 {} 个 Tool Bean，工具列表: {}",
+                registeredBeanNames.size(), toolkit.getToolNames());
+        return toolkit;
+    }
+
+    private boolean hasToolAnnotation(Class<?> clazz) {
+        Class<?> current = clazz;
+        while (current != null && current != Object.class) {
+            for (Method method : current.getDeclaredMethods()) {
+                if (method.isAnnotationPresent(Tool.class)) {
+                    return true;
+                }
+            }
+            current = current.getSuperclass();
+        }
+        return false;
     }
 }
