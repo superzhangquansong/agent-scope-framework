@@ -37,31 +37,6 @@ public class ToolkitConfig {
 
     private final ApplicationContext applicationContext;
 
-    /**
-     * 动态注册所有继承 AbstractTool 的 Spring Bean。
-     * <p>
-     * 通过方法参数注入 List<AbstractTool>，Spring 会自动收集容器中所有 AbstractTool 子类实例。
-     * 新增工具只需添加 @Component，无需修改此配置。
-     * </p>
-     */
-    /*@Bean
-    public Toolkit toolkit(List<AbstractTool> tools) {
-        log.info("[CoreBeans] 初始化 Toolkit，开始动态注册工具");
-        Toolkit toolkit = new Toolkit();
-
-        // 内置工具（如果需要仍可单独注册）
-        toolkit.registerTool(new TodoTools());
-        log.info("[CoreBeans] 已注册内置工具: TodoTools");
-
-        // 动态注册所有业务工具
-        for (AbstractTool tool : tools) {
-            toolkit.registerTool(tool);
-            log.info("[CoreBeans] 已注册业务工具: {}", tool.getClass().getSimpleName());
-        }
-
-        log.info("[CoreBeans] Toolkit 初始化完成，共注册 {} 个业务工具", tools.size());
-        return toolkit;
-    }*/
     @Bean
     public Toolkit toolkit() {
         Toolkit toolkit = new Toolkit();

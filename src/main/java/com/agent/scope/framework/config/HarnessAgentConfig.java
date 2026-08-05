@@ -108,8 +108,7 @@ public class HarnessAgentConfig {
                 .name(DEFAULT_AGENT_NAME)
                 .sysPrompt(DEFAULT_SYSTEM_PROMPT)
                 .model(dashScopeModel)
-                .toolkit(toolkit)
-                .middlewares(List.of(new MiddlewareConfig()));
+                .toolkit(toolkit);
         // .compaction(compactionConfig)  // 上下文压缩已由 ContextCompressionMiddleware 实现
 
         log.info("[HarnessAgentConfig] HarnessAgent.Builder 构建完成，整合 Workspace/记忆/会话持久化/子Agent/沙箱");

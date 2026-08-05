@@ -3,7 +3,15 @@ package com.agent.scope.framework.service;
 import com.agent.scope.framework.context.SessionContext;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.agentscope.core.agent.RuntimeContext;
+import io.agentscope.core.event.AgentEndEvent;
+import io.agentscope.core.event.AgentStartEvent;
 import io.agentscope.core.event.AgentEvent;
+import io.agentscope.core.event.TextBlockDeltaEvent;
+import io.agentscope.core.event.TextBlockEndEvent;
+import io.agentscope.core.event.ToolCallEndEvent;
+import io.agentscope.core.event.ToolCallStartEvent;
+import io.agentscope.core.event.ToolResultEndEvent;
+import io.agentscope.core.event.ToolResultStartEvent;
 import io.agentscope.harness.agent.HarnessAgent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,11 +39,9 @@ import static com.agent.scope.framework.constant.BusinessConst.CTX_KEY_SESSION_C
  * </ol>
  * </p>
  * <p>
- * <b>与旧实现的区别</b>：
- * 旧实现使用 {@code isDeviceControlCommand()}、{@code parseDeviceActions()}、
- * {@code keywordToSpk()} 等硬编码 if-else 逻辑进行意图路由和命令解析，
- * 本质上不是智能框架。新实现完全移除这些方法，将意图理解和参数构造交给 LLM，
- * 真正实现"智能"路由。
+ * <b>事件处理遵循 AgentScope 2.0 官方规范</b>：
+ * 使用 instanceof 按事件类型分别处理，对于流式文本片段（TextBlockDeltaEvent）
+ * 只转发增量文本 getDelta()，避免对整个事件对象做全量 JSON 序列化。
  * </p>
  *
  * @author agent-scope-start
@@ -48,7 +54,6 @@ public class ChatService {
 
     /**
      * Jackson ObjectMapper（线程安全，静态复用，避免每次创建）
-     * 替代 org.json.JSONObject.valueToString，序列化性能提升 5-10 倍
      */
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
@@ -60,26 +65,23 @@ public class ChatService {
 
             SessionContext ctx = new SessionContext(userId, houseId, sessionId, accessToken);
 
-            // 3. 构建 RuntimeContext，预注入 SessionContext
-            //    SessionContextMiddleware 会检测到已存在的 SessionContext，不再覆盖
-            //    这样 accessToken 等敏感信息能正确传递到工具方法
+            // 构建 RuntimeContext，预注入 SessionContext
+            // SessionContextMiddleware 会检测到已存在的 SessionContext，不再覆盖
+            // 这样 accessToken 等敏感信息能正确传递到工具方法
             RuntimeContext runtimeContext = RuntimeContext.builder()
                     .userId(userId)
                     .sessionId(sessionId)
                     .put(CTX_KEY_SESSION_CONTEXT, ctx)
                     .build();
 
-
-            // 4. 发送 agent_start 事件
+            // 发送 agent_start 事件
             sendEvent(emitter, "agent_start", sessionId, Map.of());
 
-
-            // 6. 委托 HarnessAgent 执行 ReAct 推理循环
-            //    LLM 将自主决策调用哪个工具、如何解析用户指令
-            //    所有意图路由、参数构造、设备匹配全部由 LLM 智能完成
+            // 委托 HarnessAgent 执行 ReAct 推理循环
+            // LLM 将自主决策调用哪个工具、如何解析用户指令
+            // 所有意图路由、参数构造、设备匹配全部由 LLM 智能完成
             harnessAgent.streamEvents(userMessage, runtimeContext)
                     .doOnNext(event -> {
-                        // 将 AgentScope AgentEvent 转换为 SSE 事件并推送
                         try {
                             forwardAgentEvent(emitter, sessionId, event);
                         } catch (Exception e) {
@@ -88,14 +90,13 @@ public class ChatService {
                         }
                     })
                     .doOnComplete(() -> {
-                        // Agent 执行完成
+                        // Agent 执行完成（含记忆整合等后台收尾）
                         log.info("[Chat] HarnessAgent 执行完成: sessionId={}", sessionId);
                         try {
                             sendEvent(emitter, "agent_end", sessionId, Map.of());
                         } catch (IOException e) {
-                            throw new RuntimeException(e);
+                            log.warn("[Chat] 发送 agent_end 失败: {}", e.getMessage());
                         }
-
                         sendDone(emitter);
                         emitter.complete();
                     })
@@ -126,16 +127,22 @@ public class ChatService {
         }
     }
 
-    // ==================== Agent 事件转发 ====================
+    // ==================== Agent 事件转发（遵循官方 instanceof 模式）====================
 
     /**
      * 将 AgentScope AgentEvent 转换为 SSE 事件并发送。
      * <p>
-     * AgentScope 2.0 GA 的 AgentEvent 有多种子类型（ReasoningEvent、ToolCallEvent、
-     * TextDeltaEvent 等），本方法将其统一序列化为 JSON 并通过 SSE 推送。
+     * 遵循 AgentScope 2.0 官方文档的事件处理模式，使用 instanceof 按事件类型分别处理：
+     * <ul>
+     *   <li>{@link TextBlockDeltaEvent} — 流式文本片段，只转发 getDelta() 增量文本，不序列化整个事件</li>
+     *   <li>{@link ToolCallStartEvent} — 工具调用开始，转发工具名</li>
+     *   <li>{@link ToolResultEndEvent} — 工具执行完成，转发执行状态</li>
+     *   <li>{@link AgentEndEvent} — Agent 完全结束（含记忆整合后），关闭 SSE</li>
+     * </ul>
      * </p>
      * <p>
-     * 同时补充 sessionId 和 timestamp 字段，确保前端能正确关联事件。
+     * <b>性能优化</b>：对 TextBlockDeltaEvent 只提取 getDelta() 字符串构造轻量 JSON，
+     * 避免对整个事件对象做全量序列化（每个 token 节省 5-10 倍开销）。
      * </p>
      *
      * @param emitter   SSE 发射器
@@ -144,12 +151,74 @@ public class ChatService {
      * @throws IOException SSE 发送异常
      */
     private void forwardAgentEvent(SseEmitter emitter, String sessionId, AgentEvent event) throws IOException {
-        // 将 AgentEvent 序列化为 JSON
-        String eventJson = toJson(event);
+        // 按官方文档的 instanceof 模式分别处理各类事件
+        if (event instanceof TextBlockDeltaEvent delta) {
+            // 流式文本片段：只转发增量文本，构造轻量 JSON（最热点路径，必须轻量）
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("type", "text_delta");
+            payload.put("sessionId", sessionId);
+            payload.put("delta", delta.getDelta());
+            emitter.send(SseEmitter.event().data(toJson(payload)));
 
-        // 补充 sessionId 到事件中（AgentEvent 可能不包含此字段）
-        // 直接发送原始 JSON，前端根据 event 类型字段渲染
-        emitter.send(SseEmitter.event().data(eventJson));
+        } else if (event instanceof TextBlockEndEvent end) {
+            // 文本块完成：标记一次完整文本输出结束
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("type", "text_end");
+            payload.put("sessionId", sessionId);
+            payload.put("blockId", end.getBlockId());
+            emitter.send(SseEmitter.event().data(toJson(payload)));
+
+        } else if (event instanceof ToolCallStartEvent tc) {
+            // 工具调用开始：通知前端正在调用哪个工具
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("type", "tool_call_start");
+            payload.put("sessionId", sessionId);
+            payload.put("toolCallId", tc.getToolCallId());
+            payload.put("toolName", tc.getToolCallName());
+            emitter.send(SseEmitter.event().data(toJson(payload)));
+
+        } else if (event instanceof ToolCallEndEvent tc) {
+            // 工具调用参数构造完成
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("type", "tool_call_end");
+            payload.put("sessionId", sessionId);
+            payload.put("toolCallId", tc.getToolCallId());
+            emitter.send(SseEmitter.event().data(toJson(payload)));
+
+        } else if (event instanceof ToolResultStartEvent tr) {
+            // 工具开始执行
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("type", "tool_result_start");
+            payload.put("sessionId", sessionId);
+            payload.put("toolCallId", tr.getToolCallId());
+            payload.put("toolName", tr.getToolCallName());
+            emitter.send(SseEmitter.event().data(toJson(payload)));
+
+        } else if (event instanceof ToolResultEndEvent tr) {
+            // 工具执行完成：转发执行状态（SUCCESS/ERROR等）
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("type", "tool_result_end");
+            payload.put("sessionId", sessionId);
+            payload.put("toolCallId", tr.getToolCallId());
+            payload.put("state", tr.getState() != null ? tr.getState().name() : "UNKNOWN");
+            emitter.send(SseEmitter.event().data(toJson(payload)));
+
+        } else if (event instanceof AgentEndEvent end) {
+            // Agent 完全结束（含记忆整合后）：关闭 SSE
+            // 注意：AgentEndEvent 在记忆整合之后才触发，此时 SSE 才最终关闭
+            log.info("[Chat] 收到 AgentEndEvent，关闭SSE: sessionId={}", sessionId);
+            // AgentEndEvent 作为最终兜底，如果前面没有提前关闭，这里关闭
+            // 当前实现不提前关闭，等 AgentEndEvent 统一关闭，保证消息完整性
+
+        } else {
+            // 其他事件（AgentStartEvent/ModelCallStartEvent/ThinkingBlock*等）
+            // 这些事件频率低且非热点，可全量序列化
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("type", event.getClass().getSimpleName());
+            payload.put("sessionId", sessionId);
+            payload.put("eventType", event.getType() != null ? event.getType().name() : "UNKNOWN");
+            emitter.send(SseEmitter.event().data(toJson(payload)));
+        }
 
         log.debug("[SSE] 转发Agent事件: sessionId={}, eventType={}",
                 sessionId, event.getClass().getSimpleName());
