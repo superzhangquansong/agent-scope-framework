@@ -1,6 +1,7 @@
 package com.agent.scope.framework.controller;
 
 import com.agent.scope.framework.constant.BusinessConst;
+import com.agent.scope.framework.service.ChatService;
 import io.agentscope.core.ReActAgent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,13 +16,15 @@ import java.util.Map;
  * 常见场景：用户点击"停止"按钮、超时强制中断、内容审核触发中断。
  * </p>
  * <p>
- * <b>重要</b>：必须使用 {@link ReActAgent#interrupt(String, String)} 指定 userId 和 sessionId，
- * 而非 @Deprecated 的无参 {@code interrupt()}（后者使用 defaultSessionId，多会话场景下无效）。
- * HarnessAgent 内部委托的 delegate 就是此 ReActAgent 实例，两者共享同一份 AgentState。
- * </p>
- * <p>
- * <b>参数顺序</b>：{@code interrupt(userId, sessionId)}，userId 是用户 ID（纯数字），
- * sessionId 是会话 ID（32 位十六进制字符串）。传反会导致中断信号发到不存在的会话，无效。
+ * <b>双重中断机制</b>：
+ * <ol>
+ *   <li>{@link ChatService#interruptSession(String)}：直接 dispose Reactor 订阅 + 关闭 SSE，
+ *       立即终止正在运行的 HarnessAgent streamEvents Flux</li>
+ *   <li>{@link ReActAgent#interrupt(String, String)}：设置框架级中断标志，
+ *       ReAct 循环在下次迭代时检查并安全终止</li>
+ * </ol>
+ * 单独使用 #2 无效，因为 HarnessAgent 的 streamEvents Flux 与 ReActAgent.interrupt()
+ * 的中断标志可能不在同一执行上下文，Flux 不会被取消。必须配合 #1 直接 dispose 订阅。
  * </p>
  *
  * @author zqs
@@ -33,37 +36,18 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class InterruptController {
 
-    /**
-     * ReActAgent 实例（HarnessAgent 的 delegate，共享 AgentState）。
-     * 注入 ReActAgent 类型而非 Agent 接口，以访问 {@link ReActAgent#interrupt(String, String)} 方法。
-     */
     private final ReActAgent reActAgent;
 
     /**
-     * 中断指定会话的 Agent 执行。
-     * <p>
-     * 调用 {@link ReActAgent#interrupt(String, String)} 精确中断指定 (userId, sessionId) 的执行，
-     * ReAct 循环在下次迭代检查中断标志时安全终止。
-     * </p>
-     *
-     * <p><b>参数说明</b>：
-     * <ul>
-     *   <li>{@code userId}：用户 ID（纯数字，如 {@code 1680784336610086914}）</li>
-     *   <li>{@code sessionId}：会话 ID（32 位十六进制字符串，如 {@code 62ef010c9c194beb8986d2fe53280014}）</li>
-     * </ul>
-     * </p>
-     *
-     * @param userId    用户 ID（纯数字）
-     * @param sessionId 会话 ID（32 位十六进制字符串）
-     * @return 操作结果
+     * ChatService 引用，用于直接 dispose Reactor 订阅实现立即中断。
      */
+    private final ChatService chatService;
+
     @PostMapping
     public Map<String, Object> interrupt(@RequestParam String userId,
                                          @RequestParam String sessionId) {
         log.info("[Interrupt] 收到中断请求: userId={}, sessionId={}", userId, sessionId);
 
-        // 参数校验：防止 userId 和 sessionId 传反（常见错误）
-        // userId 是纯数字，sessionId 是 32 位十六进制字符串
         if (!isValidUserId(userId) || !isValidSessionId(sessionId)) {
             String hint = String.format(
                     "参数格式错误: userId 应为纯数字, sessionId 应为 32 位十六进制字符串。"
@@ -79,9 +63,14 @@ public class InterruptController {
         }
 
         try {
-            // 精确中断指定 (userId, sessionId) 的 ReAct 循环
+            // 1. 直接取消 Reactor 订阅 + 关闭 SSE（立即生效，终止正在运行的 Flux）
+            boolean disposed = chatService.interruptSession(sessionId);
+            log.info("[Interrupt] Reactor 订阅中断结果: sessionId={}, disposed={}", sessionId, disposed);
+
+            // 2. 框架级中断标志（ReAct 循环下次迭代时检查，作为补充）
             reActAgent.interrupt(userId, sessionId);
-            log.info("[Interrupt] 中断信号已发送: userId={}, sessionId={}", userId, sessionId);
+            log.info("[Interrupt] 框架中断信号已发送: userId={}, sessionId={}", userId, sessionId);
+
             return Map.of(
                     "code", BusinessConst.HTTP_OK,
                     "message", "中断信号已发送",
@@ -100,22 +89,10 @@ public class InterruptController {
         }
     }
 
-    /**
-     * 校验 userId 格式：纯数字字符串。
-     *
-     * @param userId 用户 ID
-     * @return true 格式正确
-     */
     private boolean isValidUserId(String userId) {
         return userId != null && !userId.isBlank() && userId.matches("\\d+");
     }
 
-    /**
-     * 校验 sessionId 格式：32 位十六进制字符串。
-     *
-     * @param sessionId 会话 ID
-     * @return true 格式正确
-     */
     private boolean isValidSessionId(String sessionId) {
         return sessionId != null && !sessionId.isBlank()
                 && sessionId.matches("[0-9a-fA-F]{32}");

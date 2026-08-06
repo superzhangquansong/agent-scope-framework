@@ -148,28 +148,36 @@ public class DeviceTool extends AbstractTool {
                 result.put("gatewayId", gatewayId);
                 result.put("userInput", userInput);
                 result.put("status", "SUCCESS");
-                result.put("message", "设备控制指令已发送: " + userInput);
+                result.put("detail", "设备控制指令已发送: " + userInput);
                 controlResults.add(result);
 
                 log.info("[DeviceTool] 设备控制成功: deviceId={}, gatewayId={}, userInput={}",
                         deviceId, gatewayId, userInput);
             }
 
-            // 返回结构化的控制结果，包含每个设备的执行状态
+            // 关键：返回值中避免出现 code/message 等可能与"错误"关联的字段名
+            // 之前 data 中有 code=0 + message，LLM 误读为"参数验证错误"并重复调用
+            // 改用明确的 executed + controlledDevices 字段，让 LLM 一眼看出成功
             JSONObject data = new JSONObject();
-            data.put("code", 0);
-            data.put("controlResults", controlResults);
+            data.put("executed", true);
+            data.put("controlledDevices", controlResults);
             data.put("totalDevices", actions.size());
             data.put("successCount", actions.size());
-            data.put("message", "所有设备控制指令已成功发送");
+            data.put("failedCount", 0);
+            data.put("summary", "全部 " + actions.size() + " 个设备控制指令已成功发送，无需重新调用");
             toolResultVO.setData(data);
+            // 覆盖默认 message，明确告知 LLM 控制已成功
+            toolResultVO.setMessage("批量控制成功：已控制 " + actions.size() + " 个设备，actionsJson 参数验证通过且已执行");
 
         } catch (Exception e) {
             log.error("[DeviceTool] 解析 actionsJson 失败: actionsJson={}, error={}", actionsJson, e.getMessage());
-            // 解析失败时返回错误结果，让 LLM 知道参数格式有问题
+            // 关键修复：解析失败时必须设 success=false 并更新 message，
+            // 否则 LLM 看到 success=true + data.code=-1 的矛盾信号会误判为"参数验证失败"并反复重试
+            toolResultVO.setSuccess(false);
+            toolResultVO.setMessage("actionsJson 格式错误: " + e.getMessage());
             JSONObject data = new JSONObject();
-            data.put("code", -1);
-            data.put("message", "actionsJson 格式错误: " + e.getMessage());
+            data.put("executed", false);
+            data.put("error", "actionsJson 格式错误: " + e.getMessage());
             toolResultVO.setData(data);
         }
 

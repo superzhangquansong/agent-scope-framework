@@ -17,6 +17,8 @@ import io.agentscope.core.event.*;
 import io.agentscope.core.event.ConfirmResult;
 import io.agentscope.core.message.*;
 import io.agentscope.core.model.ChatUsage;
+import io.agentscope.core.permission.PermissionBehavior;
+import io.agentscope.core.permission.PermissionRule;
 import io.agentscope.harness.agent.HarnessAgent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -201,6 +203,7 @@ public class ChatService {
         String houseId = dto.getHouseId();
         String accessToken = dto.getAccessToken();
 
+        // 会话记录容器：累积执行过程中的思考内容、最终回复、Token 消耗
         final ChatSessionRecorder recorder = new ChatSessionRecorder();
 
         try {
@@ -235,7 +238,7 @@ public class ChatService {
                 }
             }
 
-            // 构建 ConfirmResult 列表：使用 Redis 中的完整 ToolCallInfo（含 input）
+            // 构建 ConfirmResult 列表：使用 Redis 中的完整 ToolCallInfo（含 input + suggestedRules）
             // 如果前端未传入决策（confirms 为空），默认全部允许
             List<ConfirmResult> confirmResults = pendingInfos.stream()
                     .map(info -> {
@@ -250,7 +253,25 @@ public class ChatService {
                         log.info("[Chat] 权限确认决策: sessionId={}, toolCallId={}, toolName={}, allowed={}, input={}",
                                 sessionId, info.getToolCallId(), info.getToolName(), allowed,
                                 info.getInput() != null ? info.getInput() : "null");
-                        return new ConfirmResult(allowed, toolUse);
+
+                        // 关键修复：使用官方文档推荐的方式 —— 传入 RequireUserConfirmEvent 中
+                        // 权限系统自动生成的 suggestedRules（已序列化存储到 Redis，此处恢复）。
+                        // 官方文档：new ConfirmResult(true, tc, tc.getSuggestedRules())
+                        // 建议规则由权限引擎基于本次调用自动生成，引擎知道如何匹配和放行后续相同调用。
+                        // 手动构造的 PermissionRule 无法被引擎正确匹配，导致恢复后二次调用仍触发 HITL。
+                        List<PermissionRule> rules = toPermissionRules(info.getSuggestedRules());
+
+                        // 安全兜底：如果 suggestedRules 为空（权限系统未生成建议规则），
+                        // 且用户确认允许，则手动构造一条 ALLOW 规则
+                        if (rules == null && allowed) {
+                            rules = List.of(new PermissionRule(
+                                    info.getToolName(),
+                                    null,
+                                    PermissionBehavior.ALLOW,
+                                    "suggested"));
+                        }
+
+                        return new ConfirmResult(allowed, toolUse, rules);
                     })
                     .toList();
 
@@ -267,7 +288,10 @@ public class ChatService {
 
             sendEvent(emitter, SSE_EVENT_AGENT_START, sessionId, Map.of());
 
-            harnessAgent.streamEvents(resumeMsg, runtimeContext)
+            // 注册活跃会话（支持恢复执行期间中断）
+            activeEmitters.put(sessionId, emitter);
+
+            Disposable resumeSubscription = harnessAgent.streamEvents(resumeMsg, runtimeContext)
                     .doOnNext(event -> {
                         try {
                             forwardAgentEvent(emitter, sessionId, userId, event, recorder);
@@ -277,6 +301,10 @@ public class ChatService {
                         }
                     })
                     .doOnComplete(() -> {
+                        // 清理活跃会话注册
+                        activeEmitters.remove(sessionId);
+                        activeSubscriptions.remove(sessionId);
+
                         long totalDurationMs = System.currentTimeMillis() - recorder.sessionStartTime;
                         log.info("[Chat] 权限确认后恢复执行完成: sessionId={}, 总耗时={}ms", sessionId, totalDurationMs);
 
@@ -298,6 +326,10 @@ public class ChatService {
                         emitter.complete();
                     })
                     .doOnError(err -> {
+                        // 清理活跃会话注册
+                        activeEmitters.remove(sessionId);
+                        activeSubscriptions.remove(sessionId);
+
                         log.error("[Chat] 权限确认后恢复执行异常: sessionId={}", sessionId, err);
                         try {
                             sendEvent(emitter, SSE_EVENT_ERROR, sessionId, Map.of(
@@ -309,6 +341,9 @@ public class ChatService {
                         emitter.complete();
                     })
                     .subscribe();
+
+            // 注册订阅，支持恢复执行期间被 /api/chat/interrupt 中断
+            activeSubscriptions.put(sessionId, resumeSubscription);
 
         } catch (Exception e) {
             log.error("[Chat] 权限确认处理异常: sessionId={}", sessionId, e);
@@ -483,6 +518,11 @@ public class ChatService {
                     })
                     .subscribe(); // 触发异步执行
 
+            // 关键修复：将订阅存入 activeSubscriptions，供 interruptSession() 直接 dispose
+            // 此前漏存导致 /api/chat/interrupt 无法取消正在运行的 Reactor Flux，Agent 继续执行
+            activeSubscriptions.put(sessionId, subscription);
+            log.info("[Chat] 已注册活跃订阅: sessionId={}, 可被中断", sessionId);
+
         } catch (Exception e) {
             log.error("[Chat] 消息处理异常: sessionId={}", sessionId, e);
             try {
@@ -497,6 +537,49 @@ public class ChatService {
     }
 
     // ==================== Redis 待确认权限请求管理（HITL）====================
+
+    /**
+     * 将 AgentScope 的 {@link PermissionRule} 列表转换为可序列化的 {@link SuggestedRuleInfo} 列表。
+     * <p>PermissionRule 是 AgentScope 库的 record，直接 JSON 序列化/反序列化可能因缺少无参构造器而失败，
+     * 因此拆为 DTO 存储 4 个 String 字段。</p>
+     *
+     * @param rules 权限规则列表（来自 ToolUseBlock.getSuggestedRules()，可能为 null）
+     * @return 可序列化的 DTO 列表（null 输入返回 null）
+     */
+    private List<PermissionAskEventBO.SuggestedRuleInfo> toSuggestedRuleInfos(List<PermissionRule> rules) {
+        if (rules == null || rules.isEmpty()) {
+            return null;
+        }
+        return rules.stream()
+                .map(rule -> PermissionAskEventBO.SuggestedRuleInfo.builder()
+                        .toolName(rule.toolName())
+                        .ruleContent(rule.ruleContent())
+                        .behavior(rule.behavior() != null ? rule.behavior().name() : null)
+                        .source(rule.source())
+                        .build())
+                .toList();
+    }
+
+    /**
+     * 将可序列化的 {@link SuggestedRuleInfo} 列表转换回 AgentScope 的 {@link PermissionRule} 列表。
+     * <p>使用 PermissionRule 的 4 参数构造函数重建：
+     * {@code new PermissionRule(toolName, ruleContent, PermissionBehavior.valueOf(behavior), source)}</p>
+     *
+     * @param infos 可序列化 DTO 列表（可能为 null）
+     * @return 权限规则列表（null 输入返回 null）
+     */
+    private List<PermissionRule> toPermissionRules(List<PermissionAskEventBO.SuggestedRuleInfo> infos) {
+        if (infos == null || infos.isEmpty()) {
+            return null;
+        }
+        return infos.stream()
+                .map(info -> new PermissionRule(
+                        info.getToolName(),
+                        info.getRuleContent(),
+                        info.getBehavior() != null ? PermissionBehavior.valueOf(info.getBehavior()) : PermissionBehavior.ALLOW,
+                        info.getSource() != null ? info.getSource() : "suggested"))
+                .toList();
+    }
 
     /**
      * 将待确认的工具调用缓存到 Redis（替代内存 ConcurrentHashMap）。
@@ -541,10 +624,15 @@ public class ChatService {
                                         tc.getId(), tc.getName());
                             }
                         }
+                        // AgentScope 2.0.0 的 ToolUseBlock 不存在 getSuggestedRules() 方法
+                        // （官方文档描述的 API 与 2.0.0 实际发布版本不一致）。
+                        // 此处传 null，由下方安全兜底逻辑构造 ALLOW 规则。
+                        List<PermissionAskEventBO.SuggestedRuleInfo> suggestedRuleInfos = null;
                         return PermissionAskEventBO.ToolCallInfo.builder()
                                 .toolCallId(tc.getId())
                                 .toolName(tc.getName())
                                 .input(input)
+                                .suggestedRules(suggestedRuleInfos)
                                 .build();
                     })
                     .toList();
@@ -651,7 +739,21 @@ public class ChatService {
                     log.info("[Chat] 自然语言恢复确认: sessionId={}, toolCallId={}, toolName={}, allowed={}, input={}",
                             sessionId, info.getToolCallId(), info.getToolName(), allowed,
                             info.getInput() != null ? info.getInput() : "null");
-                    return new ConfirmResult(allowed, toolUse);
+
+                    // 关键修复：使用官方文档推荐的 getSuggestedRules() 恢复权限规则
+                    // 建议规则由权限引擎自动生成，引擎知道如何匹配和放行后续相同调用
+                    List<PermissionRule> rules = toPermissionRules(info.getSuggestedRules());
+
+                    // 安全兜底：如果 suggestedRules 为空且用户确认允许，手动构造 ALLOW 规则
+                    if (rules == null && allowed) {
+                        rules = List.of(new PermissionRule(
+                                info.getToolName(),
+                                null,
+                                PermissionBehavior.ALLOW,
+                                "suggested"));
+                    }
+
+                    return new ConfirmResult(allowed, toolUse, rules);
                 })
                 .toList();
 
@@ -944,6 +1046,7 @@ public class ChatService {
             // 特性14/15：权限 HITL — 敏感工具调用需用户确认
             // Agent 暂停执行，缓存待确认的 ToolUseBlock 到 Redis，前端展示确认界面
             // 用户可通过 /api/chat/confirm 接口或直接发"继续"/"确认"/"拒绝"等自然语言恢复
+
             log.info("[Chat] 权限确认请求: sessionId={}, replyId={}, toolCalls={}",
                     sessionId, ruc.getReplyId(),
                     ruc.getToolCalls().stream().map(tcb -> tcb.getName()
@@ -974,6 +1077,7 @@ public class ChatService {
                                 .toolCallId(tc.getId())
                                 .toolName(tc.getName())
                                 .input(input)
+                                .suggestedRules(null)
                                 .build();
                     })
                     .toList();

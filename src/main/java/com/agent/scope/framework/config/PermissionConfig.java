@@ -47,19 +47,24 @@ public class PermissionConfig {
     /**
      * 权限上下文状态 Bean
      * <p>
-     * 配置权限系统的全局模式和工具级规则：
-     * - 模式：ACCEPT_EDITS（只读工具自动放行，非只读工具需显式规则或用户确认）
-     * - ASK 规则：batch_control_device（批量设备控制需审批）
+     * 配置权限系统的全局模式：
+     * - 模式：ACCEPT_EDITS（只读工具自动放行，非只读工具走默认 ASK）
      * </p>
      * <p>
-     * <b>模式选择说明</b>：
+     * <b>关键设计——不注册显式 ASK 规则的原因</b>：
+     * <p>
+     * AgentScope 2.0.0 权限引擎的评估顺序为 {@code deny → ask → allow → default}。
+     * 若注册了显式 ASK 规则（步骤2），则即使用户确认后通过 ConfirmResult 添加了 ALLOW 规则（步骤4），
+     * ASK 规则仍会先匹配，导致同一工具的后续调用再次触发 HITL，形成无限确认循环。
+     * </p>
+     * <p>
+     * 解决方案：不注册显式 ASK 规则。在 ACCEPT_EDITS 模式下：
      * <ul>
-     *   <li>DEFAULT：所有操作都需显式 ALLOW 规则，否则走 ASK → 只读工具也会被拦截</li>
-     *   <li>ACCEPT_EDITS：只读工具（@Tool(readOnly=true)）自动 ALLOW，非只读工具走规则匹配</li>
-     *   <li>BYPASS：全部放行（不安全）</li>
+     *   <li>只读工具（readOnly=true）：由 checkExploreMode 自动 ALLOW（步骤3）</li>
+     *   <li>非只读工具（如 batch_control_device）：无显式规则 → 走 default ASK（步骤6）</li>
      * </ul>
-     * 本项目使用 ACCEPT_EDITS，确保 query_device_list/search_product 等只读工具直接放行，
-     * 仅 batch_control_device 等写入操作需用户确认。
+     * 用户首次确认后，ConfirmResult 添加的 ALLOW 规则在步骤4匹配（先于步骤6的 default ASK），
+     * 从而实现"首次确认后自动放行后续相同工具调用"。
      * </p>
      *
      * @return PermissionContextState 权限上下文状态
@@ -69,27 +74,12 @@ public class PermissionConfig {
         AgentScopeProperties.Permission permission = properties.getPermission();
         List<String> askTools = permission.getAskTools();
 
-        log.info("[PermissionConfig] 创建权限上下文: mode=ACCEPT_EDITS, askTools={}", askTools);
+        log.info("[PermissionConfig] 创建权限上下文: mode=ACCEPT_EDITS, askTools={} (不注册显式ASK规则，依赖默认ASK行为)", askTools);
 
-        PermissionContextState.Builder builder = PermissionContextState.builder()
-                .mode(PermissionMode.ACCEPT_EDITS);
-
-        // 配置需要人工审批的敏感工具（如批量设备控制、下单等）
-        if (askTools != null && !askTools.isEmpty()) {
-            for (String toolName : askTools) {
-                if (toolName == null || toolName.isBlank()) {
-                    continue;
-                }
-                String trimmed = toolName.trim();
-                if (trimmed.isEmpty()) {
-                    continue;
-                }
-                builder.addAskRule(trimmed,
-                        new PermissionRule(trimmed, null, PermissionBehavior.ASK, "userSettings"));
-                log.info("[PermissionConfig] 注册 ASK 规则: tool={}", trimmed);
-            }
-        }
-
-        return builder.build();
+        // 不注册显式 ASK 规则：ACCEPT_EDITS 模式下非只读工具自动走 default ASK，
+        // 用户确认后通过 ConfirmResult 添加 ALLOW 规则可在 default ASK 之前匹配，避免循环确认
+        return PermissionContextState.builder()
+                .mode(PermissionMode.ACCEPT_EDITS)
+                .build();
     }
 }
