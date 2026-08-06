@@ -75,11 +75,6 @@ spring:
         refresh-enabled: true
         file-extension: yml
 
-  # 排除 MCP 客户端自动配置（Spring AI 2.0 与 MCP spec 库版本不兼容）
-  autoconfigure:
-    exclude:
-      - org.springframework.ai.mcp.client.common.autoconfigure.McpClientAutoConfiguration
-
   # 通过 spring.config.import 加载 Nacos 配置（不可达时降级）
   config:
     import:
@@ -151,6 +146,57 @@ scope:
   test-account:
     login-name: 19210818109
     login-pwd: "123456"
+
+  # ===================================================================
+  # AgentScope 2.0 GA 企业级特性配置（48 项特性）
+  # ===================================================================
+
+  # 特性6/34：分布式状态存储（Redis 替代默认 JsonFile）
+  state-store:
+    type: redis  # 可选：redis / memory / json-file
+
+  # 特性18：工作区配置（严禁生成 .agentscope 文件夹）
+  workspace:
+    enabled: true
+    path: /tmp/agentscope-workspace  # 工作区目录，禁止使用 .agentscope
+
+  # 特性12/13/39：中间件链配置
+  middleware:
+    enabled: true
+
+  # 特性14/15：权限系统配置（HITL 人机交互）
+  permission:
+    enabled: false  # 默认关闭，需要时开启
+    # ask-tools: batch_control_device,delete_device  # 需人工审批的敏感工具
+
+  # 特性44：提示词模板管理（Nacos 动态加载）
+  prompt-templates:
+    enabled: true
+    # default-prompt: |  # 默认提示词模板（留空则使用 HarnessAgentConfig 中的内置模板）
+    #   你是智能生活助手...
+
+  # 特性41/42：工具增强（超时控制 + 结果缓存）
+  tool:
+    enhanced: true
+    timeout-ms: 30000          # 工具执行超时：30 秒
+    cache-ttl-seconds: 300     # 工具结果缓存 TTL：5 分钟
+
+  # 可观测性配置
+  observability:
+    enabled: true              # 特性45：Prometheus 指标收集
+
+  health-check:
+    enabled: true              # 特性47：Agent 健康检查端点
+
+  # 高级特性开关（通过 Advanced 内部类绑定）
+  advanced:
+    plan-mode-enabled: false       # 特性23：Plan Mode 中间件
+    task-list-enabled: false       # TaskList 任务清单
+    memory-tools-enabled: false    # Memory Tools 记忆工具
+    skill-repository-enabled: false # 特性28/33：技能仓库
+    otel-tracing-enabled: true     # 特性39：OpenTelemetry 链路追踪
+    permission-enabled: false      # 特性14：权限系统（与 permission.enabled 二选一）
+    permission-ask-tools: ""       # 需人工审批的敏感工具列表（逗号分隔）
 
 # ===================================================================
 # MyBatis-Plus 配置

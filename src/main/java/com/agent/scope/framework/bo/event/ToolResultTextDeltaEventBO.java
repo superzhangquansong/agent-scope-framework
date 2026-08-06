@@ -9,23 +9,28 @@ import java.io.Serial;
 import java.io.Serializable;
 
 /**
+ * 工具结果文本增量事件 BO。
+ * <p>
+ * 对应 AgentScope {@code ToolResultTextDeltaEvent}，承载工具执行结果文本的流式增量片段，
+ * 前端可按顺序累加 {@link #delta} 还原完整的工具返回内容。
+ * </p>
+ *
  * @author zqs
- * @title: TextBlockDeltaEventBO
+ * @title: ToolResultTextDeltaEventBO
  * @projectName agent-scope-framework
- * @description: 工具执行结束事件 BO
  * @date 2026/8/6 10:28
  */
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-public class ToolResultEndEventBO implements Serializable {
+public class ToolResultTextDeltaEventBO implements Serializable {
 
     @Serial
     private static final long serialVersionUID = 1L;
 
     /**
-     * 事件类型（tool_result_end）
+     * 事件类型（tool_result_text_delta）
      */
     private String type;
 
@@ -45,7 +50,7 @@ public class ToolResultEndEventBO implements Serializable {
     private String toolName;
 
     /**
-     * 工具执行状态（SUCCESS/ERROR 等）
+     * 工具结果增量文本
      */
-    private String state;
+    private String delta;
 }

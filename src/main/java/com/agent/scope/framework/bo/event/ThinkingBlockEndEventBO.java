@@ -9,23 +9,27 @@ import java.io.Serial;
 import java.io.Serializable;
 
 /**
+ * 思考块结束事件 BO。
+ * <p>
+ * 对应 AgentScope {@code ThinkingBlockEndEvent}，标记一次推理思考过程的结束。
+ * </p>
+ *
  * @author zqs
- * @title: TextBlockDeltaEventBO
+ * @title: ThinkingBlockEndEventBO
  * @projectName agent-scope-framework
- * @description: 工具执行结束事件 BO
  * @date 2026/8/6 10:28
  */
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-public class ToolResultEndEventBO implements Serializable {
+public class ThinkingBlockEndEventBO implements Serializable {
 
     @Serial
     private static final long serialVersionUID = 1L;
 
     /**
-     * 事件类型（tool_result_end）
+     * 事件类型（thinking_end）
      */
     private String type;
 
@@ -35,17 +39,12 @@ public class ToolResultEndEventBO implements Serializable {
     private String sessionId;
 
     /**
-     * 工具调用 ID
+     * 回复 ID（同一次 Assistant 回复内共享）
      */
-    private String toolCallId;
+    private String replyId;
 
     /**
-     * 工具名称
+     * 思考块 ID
      */
-    private String toolName;
-
-    /**
-     * 工具执行状态（SUCCESS/ERROR 等）
-     */
-    private String state;
+    private String blockId;
 }

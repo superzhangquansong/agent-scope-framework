@@ -9,23 +9,28 @@ import java.io.Serial;
 import java.io.Serializable;
 
 /**
+ * 思考块增量事件 BO。
+ * <p>
+ * 对应 AgentScope {@code ThinkingBlockDeltaEvent}，承载思考过程的增量文本片段，
+ * 前端可按顺序累加 {@link #delta} 渲染出完整的推理过程。
+ * </p>
+ *
  * @author zqs
- * @title: TextBlockDeltaEventBO
+ * @title: ThinkingBlockDeltaEventBO
  * @projectName agent-scope-framework
- * @description: 工具执行结束事件 BO
  * @date 2026/8/6 10:28
  */
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-public class ToolResultEndEventBO implements Serializable {
+public class ThinkingBlockDeltaEventBO implements Serializable {
 
     @Serial
     private static final long serialVersionUID = 1L;
 
     /**
-     * 事件类型（tool_result_end）
+     * 事件类型（thinking_delta）
      */
     private String type;
 
@@ -35,17 +40,17 @@ public class ToolResultEndEventBO implements Serializable {
     private String sessionId;
 
     /**
-     * 工具调用 ID
+     * 回复 ID（同一次 Assistant 回复内共享）
      */
-    private String toolCallId;
+    private String replyId;
 
     /**
-     * 工具名称
+     * 思考块 ID
      */
-    private String toolName;
+    private String blockId;
 
     /**
-     * 工具执行状态（SUCCESS/ERROR 等）
+     * 思考增量文本
      */
-    private String state;
+    private String delta;
 }

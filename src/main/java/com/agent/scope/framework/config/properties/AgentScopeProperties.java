@@ -67,6 +67,30 @@ public class AgentScopeProperties {
     /** Advanced 高级特性配置 */
     private Advanced advanced = new Advanced();
 
+    /** StateStore 分布式状态存储配置 */
+    private StateStore stateStore = new StateStore();
+
+    /** Workspace 工作区配置 */
+    private Workspace workspace = new Workspace();
+
+    /** Middleware 中间件链配置 */
+    private Middleware middleware = new Middleware();
+
+    /** Permission 权限系统配置 */
+    private Permission permission = new Permission();
+
+    /** PromptTemplates 提示词模板配置 */
+    private PromptTemplates promptTemplates = new PromptTemplates();
+
+    /** Tool 工具增强配置 */
+    private Tool tool = new Tool();
+
+    /** Observability 可观测性配置 */
+    private Observability observability = new Observability();
+
+    /** HealthCheck 健康检查配置 */
+    private HealthCheck healthCheck = new HealthCheck();
+
     /**
      * 子 Agent 声明列表（支持 Nacos 热加载）。
      *
@@ -212,5 +236,92 @@ public class AgentScopeProperties {
 
         /** 子 Agent 描述（供 root Agent 调度参考） */
         private String description;
+    }
+
+    /**
+     * StateStore 分布式状态存储配置内部类（特性 6/34）。
+     */
+    @Data
+    public static class StateStore {
+        /** 状态存储类型：redis / memory / json-file */
+        private String type = "redis";
+    }
+
+    /**
+     * Workspace 工作区配置内部类（特性 18）。
+     */
+    @Data
+    public static class Workspace {
+        /** 是否启用工作区 */
+        private boolean enabled = true;
+
+        /** 工作区目录路径（严禁使用 .agentscope 目录） */
+        private String path = "/tmp/agentscope-workspace";
+    }
+
+    /**
+     * Middleware 中间件链配置内部类（特性 12/13/39）。
+     */
+    @Data
+    public static class Middleware {
+        /** 是否启用中间件链 */
+        private boolean enabled = true;
+    }
+
+    /**
+     * Permission 权限系统配置内部类（特性 14/15）。
+     */
+    @Data
+    public static class Permission {
+        /** 是否启用权限系统（HITL 人机交互） */
+        private boolean enabled = false;
+
+        /** 需人工审批的敏感工具名称列表 */
+        private List<String> askTools = new ArrayList<>();
+    }
+
+    /**
+     * PromptTemplates 提示词模板配置内部类（特性 44）。
+     */
+    @Data
+    public static class PromptTemplates {
+        /** 是否启用提示词模板管理 */
+        private boolean enabled = true;
+
+        /** 默认提示词模板内容（留空则使用内置模板） */
+        private String defaultPrompt = "";
+    }
+
+    /**
+     * Tool 工具增强配置内部类（特性 41/42）。
+     */
+    @Data
+    public static class Tool {
+        /** 是否启用工具增强（超时控制 + 结果缓存） */
+        private boolean enhanced = true;
+
+        /** 工具执行超时时间（毫秒） */
+        private long timeoutMs = 30000L;
+
+        /** 工具结果缓存 TTL（秒） */
+        private long cacheTtlSeconds = 300L;
+    }
+
+    /**
+     * Observability 可观测性配置内部类（特性 45）。
+     */
+    @Data
+    public static class Observability {
+        /** 是否启用可观测性（Prometheus 指标收集） */
+        private boolean enabled = true;
+    }
+
+    /**
+     * HealthCheck 健康检查配置内部类（特性 47）。
+     */
+    @Data
+    public static class HealthCheck {
+        /** 是否启用 Agent 健康检查端点 */
+        private boolean enabled = true;
     }
 }

@@ -2,6 +2,9 @@ package com.agent.scope.framework.config;
 
 import com.agent.scope.framework.config.properties.AgentScopeProperties;
 import io.agentscope.core.ReActAgent;
+import io.agentscope.core.middleware.MiddlewareBase;
+import io.agentscope.core.permission.PermissionContextState;
+import io.agentscope.core.state.AgentStateStore;
 import io.agentscope.core.tool.Toolkit;
 import io.agentscope.extensions.model.dashscope.DashScopeChatModel;
 import io.agentscope.harness.agent.HarnessAgent;
@@ -11,6 +14,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Optional;
 
 /**
  * AgentScope 2.0 GA 特性二：HarnessAgent 入口配置
@@ -89,21 +96,45 @@ public class HarnessAgentConfig {
 
     private final CompactionConfig compactionConfig;
 
+    /**
+     * 分布式状态存储（由 StateStoreConfig 注入，Redis 分布式后端）
+     * 替代默认的 JsonFileAgentStateStore，支持跨节点会话恢复
+     */
+    private final Optional<AgentStateStore> agentStateStore;
+
+    /**
+     * 工作区路径（由 WorkspaceConfig 注入）
+     * 确保不生成 .agentscope 本地文件夹
+     */
+    private final Optional<Path> agentWorkspacePath;
+
+    /**
+     * 权限上下文（由 PermissionConfig 注入，条件装配）
+     * 启用后拦截敏感工具调用，支持三态决策（允许/审批/拒绝）
+     */
+    private final Optional<PermissionContextState> permissionContextState;
+
+    /**
+     * 中间件链（由 MiddlewareChainConfig 注入）
+     * 五阶段洋葱+管道混合模型：onAgent/onReasoning/onActing/onModelCall/onSystemPrompt
+     */
+    private final Optional<List<MiddlewareBase>> middlewareChain;
+
 
     /**
      * HarnessAgent 构建器 Bean
      * <p>
-     * 创建一个预配置的 HarnessAgent.Builder 实例，包含：
+     * 创建一个预配置的 HarnessAgent.Builder 实例，整合以下工程能力：
      * - Agent 名称：scope-harness
      * - 系统提示词：增强版智能家居助手角色设定
      * - 模型：DashScopeChatModel（通义千问）
-     * - 工作区：工作区目录路径
      * - 工具容器：已注册全部业务工具的 Toolkit
-     * - 中间件链：五阶段洋葱模型中间件列表
-     * <p>
-     * 注意：compaction（上下文压缩配置）在 AgentScope 2.0 GA 中通过
-     * ContextCompressionMiddleware 中间件实现，故此处不再单独配置 compaction 参数。
-     * 如需使用 HarnessAgent 原生 compaction 能力，可取消下方注释并配置 CompactionConfig。
+     * - 上下文压缩：CompactionConfig（结构化压缩 + 滑动窗口）
+     * - 分布式状态存储：RedisAgentStateStore（跨节点会话恢复）
+     * - 工作区：独立临时工作目录（严禁 .agentscope 文件夹）
+     * - 中间件链：五阶段洋葱模型（OtelTracing + 自定义）
+     * - 权限系统：三态决策（ALLOW/ASK/DENY，条件装配）
+     * </p>
      *
      * @return 预配置的 HarnessAgent.Builder 实例
      */
@@ -120,7 +151,33 @@ public class HarnessAgentConfig {
                 .toolkit(toolkit)
                 .compaction(compactionConfig);
 
-        log.info("[HarnessAgentConfig] HarnessAgent.Builder 构建完成，整合 Workspace/记忆/会话持久化/子Agent/沙箱");
+        // 特性6/34：分布式状态存储（Redis），替代默认 JsonFileAgentStateStore
+        agentStateStore.ifPresent(store -> {
+            builder.stateStore(store);
+            log.info("[HarnessAgentConfig] 已装配分布式状态存储: {}", store.getClass().getSimpleName());
+        });
+
+        // 特性18：工作区路径配置（严禁 .agentscope 文件夹）
+        agentWorkspacePath.ifPresent(path -> {
+            builder.workspace(path);
+            log.info("[HarnessAgentConfig] 已装配工作区: path={}", path.toAbsolutePath());
+        });
+
+        // 特性12/13/39：中间件链（五阶段洋葱+管道混合模型）
+        middlewareChain.ifPresent(middlewares -> {
+            if (!middlewares.isEmpty()) {
+                builder.middlewares(middlewares);
+                log.info("[HarnessAgentConfig] 已装配中间件链: count={}", middlewares.size());
+            }
+        });
+
+        // 特性14/15：权限系统（三态决策，条件装配）
+        permissionContextState.ifPresent(permCtx -> {
+            builder.permissionContext(permCtx);
+            log.info("[HarnessAgentConfig] 已装配权限系统: mode={}", permCtx.getClass().getSimpleName());
+        });
+
+        log.info("[HarnessAgentConfig] HarnessAgent.Builder 构建完成，整合 Workspace/记忆/会话持久化/子Agent/沙箱/权限/中间件");
         return builder;
     }
 
