@@ -27,7 +27,7 @@ import org.springframework.stereotype.Component;
  */
 @Data
 @Component
-@ConfigurationProperties(prefix = "scope.minio")
+@ConfigurationProperties(prefix = "scope.agentscope.minio")
 public class MinioProperties {
 
     /** 服务端点（含协议与端口，如 http://localhost:9000） */

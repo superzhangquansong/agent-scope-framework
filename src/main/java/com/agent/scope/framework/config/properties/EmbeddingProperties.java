@@ -28,7 +28,7 @@ import org.springframework.stereotype.Component;
  */
 @Data
 @Component
-@ConfigurationProperties(prefix = "scope.embedding")
+@ConfigurationProperties(prefix = "scope.agentscope.embedding")
 public class EmbeddingProperties {
 
     /** 嵌入模型提供方（dashscope / ollama / openai） */

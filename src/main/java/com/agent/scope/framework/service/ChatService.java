@@ -1,17 +1,12 @@
 package com.agent.scope.framework.service;
 
+import com.agent.scope.framework.bo.event.*;
 import com.agent.scope.framework.context.SessionContext;
+import com.agent.scope.framework.dto.ChatStreamDTO;
+import com.agent.scope.framework.enums.AgentEventEnum;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.agentscope.core.agent.RuntimeContext;
-import io.agentscope.core.event.AgentEndEvent;
-import io.agentscope.core.event.AgentStartEvent;
-import io.agentscope.core.event.AgentEvent;
-import io.agentscope.core.event.TextBlockDeltaEvent;
-import io.agentscope.core.event.TextBlockEndEvent;
-import io.agentscope.core.event.ToolCallEndEvent;
-import io.agentscope.core.event.ToolCallStartEvent;
-import io.agentscope.core.event.ToolResultEndEvent;
-import io.agentscope.core.event.ToolResultStartEvent;
+import io.agentscope.core.event.*;
 import io.agentscope.harness.agent.HarnessAgent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -59,11 +54,19 @@ public class ChatService {
 
     private final HarnessAgent harnessAgent;
 
-    public void streamEvents(String sessionId, String userId, String houseId,
-                             String accessToken, String userMessage, SseEmitter emitter) {
+    public void streamEvents(ChatStreamDTO dto, SseEmitter emitter) {
+        String sessionId = dto.getSessionId();
+        String userId = dto.getUserId();
+        String houseId = dto.getHouseId();
+        String accessToken = dto.getAccessToken();
+        String userMessage = dto.getUserMessage();
         try {
-
-            SessionContext ctx = new SessionContext(userId, houseId, sessionId, accessToken);
+            SessionContext ctx = SessionContext.builder()
+                    .userId(userId)
+                    .houseId(houseId)
+                    .sessionId(sessionId)
+                    .accessToken(accessToken)
+                    .build();
 
             // 构建 RuntimeContext，预注入 SessionContext
             // SessionContextMiddleware 会检测到已存在的 SessionContext，不再覆盖
@@ -154,54 +157,61 @@ public class ChatService {
         // 按官方文档的 instanceof 模式分别处理各类事件
         if (event instanceof TextBlockDeltaEvent delta) {
             // 流式文本片段：只转发增量文本，构造轻量 JSON（最热点路径，必须轻量）
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("type", "text_delta");
-            payload.put("sessionId", sessionId);
-            payload.put("delta", delta.getDelta());
-            emitter.send(SseEmitter.event().data(toJson(payload)));
+            TextBlockDeltaEventBO eventBO = TextBlockDeltaEventBO.builder()
+                    .type(AgentEventEnum.TEXT_DELTA.getDesc())
+                    .sessionId(sessionId)
+                    .delta(delta.getDelta())
+                    .build();
+            emitter.send(SseEmitter.event().data(toJson(eventBO)));
 
         } else if (event instanceof TextBlockEndEvent end) {
             // 文本块完成：标记一次完整文本输出结束
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("type", "text_end");
-            payload.put("sessionId", sessionId);
-            payload.put("blockId", end.getBlockId());
-            emitter.send(SseEmitter.event().data(toJson(payload)));
+            TextBlockEndEventBO eventBO = TextBlockEndEventBO.builder()
+                    .type(AgentEventEnum.TEXT_END.getDesc())
+                    .sessionId(sessionId)
+                    .blockId(end.getBlockId())
+                    .build();
+            emitter.send(SseEmitter.event().data(toJson(eventBO)));
 
         } else if (event instanceof ToolCallStartEvent tc) {
             // 工具调用开始：通知前端正在调用哪个工具
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("type", "tool_call_start");
-            payload.put("sessionId", sessionId);
-            payload.put("toolCallId", tc.getToolCallId());
-            payload.put("toolName", tc.getToolCallName());
-            emitter.send(SseEmitter.event().data(toJson(payload)));
+            ToolCallStartEventBO eventBO = ToolCallStartEventBO.builder()
+                    .type(AgentEventEnum.TOOL_CALL_START.getDesc())
+                    .sessionId(sessionId)
+                    .toolCallId(tc.getToolCallId())
+                    .toolName(tc.getToolCallName())
+                    .build();
+            emitter.send(SseEmitter.event().data(toJson(eventBO)));
 
         } else if (event instanceof ToolCallEndEvent tc) {
             // 工具调用参数构造完成
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("type", "tool_call_end");
-            payload.put("sessionId", sessionId);
-            payload.put("toolCallId", tc.getToolCallId());
-            emitter.send(SseEmitter.event().data(toJson(payload)));
+            ToolCallEndEventBO eventBO = ToolCallEndEventBO.builder()
+                    .type(AgentEventEnum.TOOL_CALL_END.getDesc())
+                    .sessionId(sessionId)
+                    .toolCallId(tc.getToolCallId())
+                    .toolName(tc.getToolCallName())
+                    .build();
+            emitter.send(SseEmitter.event().data(toJson(eventBO)));
 
         } else if (event instanceof ToolResultStartEvent tr) {
             // 工具开始执行
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("type", "tool_result_start");
-            payload.put("sessionId", sessionId);
-            payload.put("toolCallId", tr.getToolCallId());
-            payload.put("toolName", tr.getToolCallName());
-            emitter.send(SseEmitter.event().data(toJson(payload)));
+            ToolResultStartEventBO eventBO = ToolResultStartEventBO.builder()
+                    .type(AgentEventEnum.TOOL_RESULT_START.getDesc())
+                    .sessionId(sessionId)
+                    .toolCallId(tr.getToolCallId())
+                    .toolName(tr.getToolCallName())
+                    .build();
+            emitter.send(SseEmitter.event().data(toJson(eventBO)));
 
         } else if (event instanceof ToolResultEndEvent tr) {
             // 工具执行完成：转发执行状态（SUCCESS/ERROR等）
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("type", "tool_result_end");
-            payload.put("sessionId", sessionId);
-            payload.put("toolCallId", tr.getToolCallId());
-            payload.put("state", tr.getState() != null ? tr.getState().name() : "UNKNOWN");
-            emitter.send(SseEmitter.event().data(toJson(payload)));
+            ToolResultEndEventBO eventBO = ToolResultEndEventBO.builder()
+                    .type(AgentEventEnum.TOOL_RESULT_END.getDesc())
+                    .sessionId(sessionId)
+                    .toolCallId(tr.getToolCallId())
+                    .state(tr.getState() != null ? tr.getState().name() : "UNKNOWN")
+                    .build();
+            emitter.send(SseEmitter.event().data(toJson(eventBO)));
 
         } else if (event instanceof AgentEndEvent end) {
             // Agent 完全结束（含记忆整合后）：关闭 SSE
@@ -213,11 +223,12 @@ public class ChatService {
         } else {
             // 其他事件（AgentStartEvent/ModelCallStartEvent/ThinkingBlock*等）
             // 这些事件频率低且非热点，可全量序列化
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("type", event.getClass().getSimpleName());
-            payload.put("sessionId", sessionId);
-            payload.put("eventType", event.getType() != null ? event.getType().name() : "UNKNOWN");
-            emitter.send(SseEmitter.event().data(toJson(payload)));
+            AgentOtherEventBO eventBO = AgentOtherEventBO.builder()
+                    .type(event.getClass().getSimpleName())
+                    .sessionId(sessionId)
+                    .eventType(event.getType() != null ? event.getType().name() : "UNKNOWN")
+                    .build();
+            emitter.send(SseEmitter.event().data(toJson(eventBO)));
         }
 
         log.debug("[SSE] 转发Agent事件: sessionId={}, eventType={}",

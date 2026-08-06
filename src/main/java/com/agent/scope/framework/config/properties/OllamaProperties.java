@@ -36,7 +36,7 @@ public class OllamaProperties {
     private String baseUrl = "http://localhost:11434";
 
     /** 模型名称（如 qwen2.5:14b、llama3:8b） */
-    private String model = "qwen2.5:14b";
+    private String model = "qwen2.5:1.5b";
 
     /** 采样温度（0~1，值越大随机性越强，默认 0.7） */
     private double temperature = 0.7;

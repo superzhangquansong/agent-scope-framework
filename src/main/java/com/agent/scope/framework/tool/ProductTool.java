@@ -56,8 +56,7 @@ public class ProductTool extends AbstractTool {
             RuntimeContext runtimeContext) {
 
         SessionContext sessionContext = resolveSessionContext(runtimeContext);
-        log.info("[ProductTool] 搜索产品: productName={}, userId={}",
-                productName, sessionContext.getUserId());
+        log.info("[ProductTool] 搜索产品: sessionContext={}", JSONObject.toJSONString(sessionContext));
         ToolResultVO toolResultVO = new ToolResultVO();
         toolResultVO.setSuccess(true);
         toolResultVO.setMessage("成功查询到产品信息");

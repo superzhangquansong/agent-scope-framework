@@ -4,8 +4,8 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class AgentScopeFrameworkApplication {
+public class Application {
     public static void main(String[] args) {
-        SpringApplication.run(AgentScopeFrameworkApplication.class, args);
+        SpringApplication.run(Application.class, args);
     }
 }

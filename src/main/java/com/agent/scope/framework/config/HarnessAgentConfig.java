@@ -1,15 +1,16 @@
 package com.agent.scope.framework.config;
 
+import com.agent.scope.framework.config.properties.AgentScopeProperties;
+import io.agentscope.core.ReActAgent;
 import io.agentscope.core.tool.Toolkit;
 import io.agentscope.extensions.model.dashscope.DashScopeChatModel;
 import io.agentscope.harness.agent.HarnessAgent;
+import io.agentscope.harness.agent.memory.compaction.CompactionConfig;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-
-import java.util.List;
 
 /**
  * AgentScope 2.0 GA 特性二：HarnessAgent 入口配置
@@ -30,7 +31,7 @@ import java.util.List;
 @Slf4j
 @Configuration
 @RequiredArgsConstructor
-@ConditionalOnProperty(prefix = "scope.harness-agent", name = "enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "scope.agentscope.harness-agent", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class HarnessAgentConfig {
 
     /**
@@ -72,6 +73,8 @@ public class HarnessAgentConfig {
             - 状态持久化：执行状态可被保存和恢复，支持任务中断后续接
             """;
 
+    private final AgentScopeProperties properties;
+
     /**
      * DashScope 聊天模型（由 CoreBeansConfig 注入）
      */
@@ -81,6 +84,10 @@ public class HarnessAgentConfig {
      * 工具容器（由 CoreBeansConfig 注入，已注册所有业务工具）
      */
     private final Toolkit toolkit;
+
+    private final ReActAgent reActAgent;
+
+    private final CompactionConfig compactionConfig;
 
 
     /**
@@ -104,12 +111,14 @@ public class HarnessAgentConfig {
     public HarnessAgent.Builder scopeHarnessAgentBuilder() {
         log.info("[HarnessAgentConfig] 构建 HarnessAgent.Builder: name={}", DEFAULT_AGENT_NAME);
 
-        HarnessAgent.Builder builder = HarnessAgent.builder()
+        HarnessAgent.Builder builder = HarnessAgent.Builder
+                .fromAgent(reActAgent)
                 .name(DEFAULT_AGENT_NAME)
                 .sysPrompt(DEFAULT_SYSTEM_PROMPT)
                 .model(dashScopeModel)
-                .toolkit(toolkit);
-        // .compaction(compactionConfig)  // 上下文压缩已由 ContextCompressionMiddleware 实现
+                .maxIters(properties.getRootAgentMaxIters())
+                .toolkit(toolkit)
+                .compaction(compactionConfig);
 
         log.info("[HarnessAgentConfig] HarnessAgent.Builder 构建完成，整合 Workspace/记忆/会话持久化/子Agent/沙箱");
         return builder;

@@ -1,13 +1,11 @@
 package com.agent.scope.framework.context;
 
-import com.agent.scope.framework.hdl.HdlHome;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
-import java.util.List;
 
 /**
  * 统一会话上下文 POJO —— SessionContext
@@ -92,87 +90,8 @@ public class SessionContext implements Serializable {
      */
     private String source;
 
-    private List<HdlHome> homeCache;
-
-    /**
-     * 会话 Token（HDL accessToken，用于调用 HDL API 鉴权）
-     */
-    private String sessionToken;
-
-    /**
-     * 当前选择的房屋 ID（设备控制、场景查询等需要）
-     */
-    private String currentHomeId;
-
     /**
      * 租户 ID（多租户隔离用）
      */
     private String tenantId;
-
-    /**
-     * 设备列表缓存键（避免重复查询 HDL API）
-     */
-    private String deviceCacheKey;
-
-
-    /**
-     * 构建会话上下文
-     *
-     * @param userId      用户 ID
-     * @param houseId     房屋 ID
-     * @param sessionId   会话 ID
-     * @param accessToken 访问令牌
-     */
-    public SessionContext(String userId, String houseId, String sessionId, String accessToken) {
-        this.userId = userId;
-        this.houseId = houseId;
-        this.sessionId = sessionId;
-        this.accessToken = accessToken;
-    }
-
-
-    /**
-     * 构建 Builder 模式快速构造
-     *
-     * @return Builder 对象
-     */
-    public static Builder builder() {
-        return new Builder();
-    }
-
-    /**
-     * Builder 模式内部类
-     */
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    @lombok.Builder
-    public static class Builder {
-        private String userId;
-        private String houseId;
-        private String orgId;
-        private String sessionId;
-        private String userName;
-        private String loginName;
-        private String accessToken;
-        private String refreshToken;
-        private String traceId;
-        private String source;
-
-        public SessionContext build() {
-            SessionContext ctx = new SessionContext();
-            ctx.userId = this.userId;
-            ctx.houseId = this.houseId;
-            ctx.orgId = this.orgId;
-            ctx.sessionId = this.sessionId;
-            ctx.userName = this.userName;
-            ctx.loginName = this.loginName;
-            ctx.accessToken = this.accessToken;
-            ctx.refreshToken = this.refreshToken;
-            ctx.traceId = this.traceId;
-            ctx.source = this.source;
-            return ctx;
-        }
-    }
-
 }

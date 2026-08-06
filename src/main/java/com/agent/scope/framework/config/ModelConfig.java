@@ -19,7 +19,7 @@ import org.springframework.context.annotation.Configuration;
 @Slf4j
 @Configuration
 @RequiredArgsConstructor
-@ConditionalOnProperty(prefix = "scope.core-beans", name = "enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "scope.agentscope.core-beans", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class ModelConfig {
 
     /**

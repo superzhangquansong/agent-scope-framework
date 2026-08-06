@@ -38,8 +38,8 @@ import java.util.Map;
  * @since 2.0.0
  */
 @Data
-@NoArgsConstructor
 @AllArgsConstructor
+@NoArgsConstructor
 @Builder
 public class ToolResultVO {
 

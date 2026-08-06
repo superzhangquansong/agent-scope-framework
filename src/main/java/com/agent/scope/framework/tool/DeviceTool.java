@@ -1,31 +1,17 @@
 package com.agent.scope.framework.tool;
 
 import com.agent.scope.framework.context.SessionContext;
-import com.agent.scope.framework.hdl.HdlIotService;
 import com.agent.scope.framework.vo.ToolResultVO;
+import com.alibaba.fastjson2.JSONObject;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.tool.Tool;
 import io.agentscope.core.tool.ToolParam;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import tools.jackson.databind.ObjectMapper;
 
 /**
  * 设备工具（特性 3：ReAct 智能体与工具调用）。
- *
- * <p>封装 HDL 设备查询与控制能力为 AgentScope 2.0.0 的 @Tool 方法，
- * LLM 通过 ReActAgent 推理循环自主决定何时调用本工具。</p>
- *
- * <p>注入 {@link ResourceResolver}，在 controlDevice 方法中使用 spk-schemas.json 做确定性属性解析，
- * 避免 ReAct 模式下 LLM 生成的 attributesJson 属性命名不一致（驼峰 vs 下划线）和颜色解析丢失问题。</p>
- *
- * <p><b>提供的工具方法</b>：</p>
- * <ul>
- *   <li>{@code queryDeviceList}：查询设备列表（按种类码过滤或全部）</li>
- *   <li>{@code queryDeviceDetail}：查询设备详情（最新状态）</li>
- *   <li>{@code controlDevice}：控制设备（开关、亮度、色温等，使用 spk-schemas 确定性解析）</li>
- * </ul>
  *
  * @author zqs
  * @since 2.0.0
@@ -34,22 +20,6 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 @RequiredArgsConstructor
 public class DeviceTool extends AbstractTool {
-
-    /**
-     * HDL 业务 API 端口（Spring 注入 HdlApiPortAdapter）
-     */
-    private final HdlIotService hdlIotService;
-
-
-    /**
-     * colorful 属性名（HDL 物模型协议字段，保留为代码常量）
-     */
-    private static final String ATTR_COLORFUL = "colorful";
-
-    /**
-     * 共享 Jackson 实例（线程安全，复用避免开销）
-     */
-    private static final ObjectMapper SHARED_MAPPER = new ObjectMapper();
 
     /**
      * 查询设备列表。
@@ -72,8 +42,14 @@ public class DeviceTool extends AbstractTool {
             readOnly = true)
     public ToolResultVO queryDeviceList(RuntimeContext runtimeContext) {
         SessionContext sessionContext = resolveSessionContext(runtimeContext);
-        log.info("[DeviceTool] 查询设备列表（全部）: userId={}", sessionContext.getUserId());
-        return new ToolResultVO();
+        log.info("[DeviceTool] 查询设备列表（全部）: sessionContext={}", JSONObject.toJSONString(sessionContext));
+        ToolResultVO toolResultVO = new ToolResultVO();
+        toolResultVO.setSuccess(true);
+        toolResultVO.setMessage("成功查询到设备信息");
+        toolResultVO.setData(JSONObject.parseObject("{\"code\":0,\"data\":[{\"deviceId\":\"1\",\"deviceName\":\"方悦\",\"deviceType\":\"RGB\",\"gatewayId\":\"1\",\"sid\":\"1\"}],\"message\":\"成功\"}"));
+        toolResultVO.setBroadcastText("成功查询到设备信息");
+        toolResultVO.setAskUser("成功查询到设备信息");
+        return toolResultVO;
     }
 
     /**
@@ -99,9 +75,14 @@ public class DeviceTool extends AbstractTool {
     ) {
 
         SessionContext sessionContext = resolveSessionContext(runtimeContext);
-        log.info("[DeviceTool] 查询设备详情: deviceIds={}, userId={}",
-                deviceIds, sessionContext.getUserId());
-        return new ToolResultVO();
+        log.info("[DeviceTool] 查询设备详情: sessionContext={}", JSONObject.toJSONString(sessionContext));
+        ToolResultVO toolResultVO = new ToolResultVO();
+        toolResultVO.setSuccess(true);
+        toolResultVO.setMessage("成功查询到设备信息");
+        toolResultVO.setData(JSONObject.parseObject("{\"code\":0,\"data\":[{\"deviceId\":\"1\",\"deviceName\":\"方悦\",\"deviceType\":\"RGB\",\"gatewayId\":\"1\",\"sid\":\"1\"}],\"message\":\"成功\"}"));
+        toolResultVO.setBroadcastText("成功查询到设备信息");
+        toolResultVO.setAskUser("成功查询到设备信息");
+        return toolResultVO;
     }
 
     /**
@@ -140,10 +121,14 @@ public class DeviceTool extends AbstractTool {
             @ToolParam(name = "actionsJson", required = true,
                     description = "设备动作JSON数组字符串，格式：[{\"deviceId\":\"<query_device_list返回的deviceId>\",\"gatewayId\":\"<query_device_list返回的gatewayId>\",\"spk\":\"<query_device_list返回的spk>\",\"userInput\":\"用户对该设备的控制描述\"}]。deviceId/gatewayId/spk必须来自query_device_list返回结果，禁止编造或使用任何示例值") String actionsJson,
             RuntimeContext runtimeContext) {
-
         SessionContext sessionContext = resolveSessionContext(runtimeContext);
-        log.info("[DeviceTool] 批量控制设备: actionsJson={}, userId={}",
-                actionsJson, sessionContext.getUserId());
-        return new ToolResultVO();
+        log.info("[DeviceTool] 批量控制设备: actionsJson={}, sessionContext={}", actionsJson, JSONObject.toJSONString(sessionContext));
+        ToolResultVO toolResultVO = new ToolResultVO();
+        toolResultVO.setSuccess(true);
+        toolResultVO.setMessage("成功批量控制设备");
+        toolResultVO.setData(JSONObject.parseObject("{\"code\":0,\"data\":[{\"deviceId\":\"1\",\"deviceName\":\"方悦\",\"deviceType\":\"RGB\",\"gatewayId\":\"1\",\"sid\":\"1\"}],\"message\":\"成功\"}"));
+        toolResultVO.setBroadcastText("成功批量控制设备");
+        toolResultVO.setAskUser("成功批量控制设备");
+        return toolResultVO;
     }
 }

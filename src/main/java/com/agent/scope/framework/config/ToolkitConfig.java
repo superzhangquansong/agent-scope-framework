@@ -32,7 +32,7 @@ import java.util.Map;
 @Slf4j
 @Configuration
 @RequiredArgsConstructor
-@ConditionalOnProperty(prefix = "scope.core-beans", name = "enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "scope.agentscope.toolkit", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class ToolkitConfig {
 
     private final ApplicationContext applicationContext;

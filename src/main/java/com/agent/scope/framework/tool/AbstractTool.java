@@ -31,12 +31,12 @@ public abstract class AbstractTool {
     protected SessionContext resolveSessionContext(RuntimeContext runtimeContext) {
         if (runtimeContext == null) {
             log.warn("[AbstractTool] RuntimeContext 为空，使用空会话上下文（可能因鉴权失败）");
-            return SessionContext.builder().build();
+            return new SessionContext();
         }
         SessionContext ctx = runtimeContext.get(CTX_KEY_SESSION_CONTEXT);
         if (ctx == null) {
             log.warn("[AbstractTool] SessionContext 未注入到 RuntimeContext");
-            return SessionContext.builder().build();
+            return new SessionContext();
         }
         return ctx;
     }

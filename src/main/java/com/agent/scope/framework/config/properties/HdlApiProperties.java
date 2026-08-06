@@ -1,4 +1,4 @@
-package com.agent.scope.framework.hdl;
+package com.agent.scope.framework.config.properties;
 
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;

@@ -2,6 +2,7 @@ package com.agent.scope.framework.tool;
 
 import com.agent.scope.framework.context.SessionContext;
 import com.agent.scope.framework.vo.ToolResultVO;
+import com.alibaba.fastjson2.JSONObject;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.tool.Tool;
 import lombok.RequiredArgsConstructor;
@@ -39,7 +40,13 @@ public class HomeTool extends AbstractTool {
             readOnly = true)
     public ToolResultVO queryHomeList(RuntimeContext runtimeContext) {
         SessionContext sessionContext = resolveSessionContext(runtimeContext);
-        log.info("[HomeTool] 查询房屋列表: userId={}", sessionContext.getUserId());
-        return new ToolResultVO();
+        log.info("[HomeTool] 查询房屋列表: sessionContext={}", JSONObject.toJSONString(sessionContext));
+        ToolResultVO toolResultVO = new ToolResultVO();
+        toolResultVO.setSuccess(true);
+        toolResultVO.setMessage("成功查询到房屋列表");
+        toolResultVO.setData(JSONObject.parseObject("{\"code\":0,\"data\":[{\"houseId\":\"1\",\"houseName\":\"客厅\",\"houseType\":\"Lite\",\"deviceCount\":\"1\"}],\"message\":\"成功\"}"));
+        toolResultVO.setBroadcastText("成功查询到房屋列表");
+        toolResultVO.setAskUser("成功查询到房屋列表");
+        return toolResultVO;
     }
 }

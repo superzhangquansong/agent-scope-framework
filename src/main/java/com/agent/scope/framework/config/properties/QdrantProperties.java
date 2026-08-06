@@ -28,7 +28,7 @@ import org.springframework.stereotype.Component;
  */
 @Data
 @Component
-@ConfigurationProperties(prefix = "scope.qdrant")
+@ConfigurationProperties(prefix = "scope.agentscope.qdrant")
 public class QdrantProperties {
 
     /** 主机地址（默认 localhost） */

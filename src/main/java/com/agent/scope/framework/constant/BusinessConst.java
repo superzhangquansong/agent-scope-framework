@@ -7,4 +7,11 @@ package com.agent.scope.framework.constant;
  */
 public interface BusinessConst {
     String CTX_KEY_SESSION_CONTEXT = "sessionContextCxt";
+    /**
+     * Bearer Token 前缀
+     */
+    String BEARER_PREFIX = "Bearer ";
+
+    //SSE Emitter，超时时间 5 分钟
+    long SSE_EMITTER_TIMEOUT = 300_000L;
 }
