@@ -40,6 +40,12 @@ public enum AgentEventEnum {
     TOOL_RESULT_TEXT_DELTA(10, "tool_result_text_delta"),
     /** 工具执行结束 */
     TOOL_RESULT_END(11, "tool_result_end"),
+    /** 模型调用开始 */
+    MODEL_CALL_START(12, "model_call_start"),
+    /** 模型调用结束 */
+    MODEL_CALL_END(13, "model_call_end"),
+    /** 权限确认请求（HITL：需用户审批敏感工具调用） */
+    PERMISSION_ASK(14, "permission_ask"),
     ;
 
     /** 事件编码 */

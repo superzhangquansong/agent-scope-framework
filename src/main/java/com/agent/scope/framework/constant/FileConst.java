@@ -10,5 +10,19 @@ package com.agent.scope.framework.constant;
 public interface FileConst {
 
     String BASE64 = "base64";
-    String MEDIA_TYPE="image/jpeg";
+
+    /**
+     * 图片默认 MIME 类型
+     */
+    String MEDIA_TYPE = "image/jpeg";
+
+    /**
+     * 音频默认 MIME 类型（Base64 编码音频使用）
+     */
+    String AUDIO_MEDIA_TYPE = "audio/mpeg";
+
+    /**
+     * 视频默认 MIME 类型（Base64 编码视频使用）
+     */
+    String VIDEO_MEDIA_TYPE = "video/mp4";
 }

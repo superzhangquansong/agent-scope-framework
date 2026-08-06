@@ -1,9 +1,11 @@
 package com.agent.scope.framework.service;
 
 import com.agent.scope.framework.entity.ChatMessageRecord;
+import com.agent.scope.framework.entity.ModelCallRecord;
 import com.agent.scope.framework.entity.TokenUsageRecord;
 import com.agent.scope.framework.entity.ToolCallRecord;
 import com.agent.scope.framework.mapper.ChatMessageRecordMapper;
+import com.agent.scope.framework.mapper.ModelCallRecordMapper;
 import com.agent.scope.framework.mapper.TokenUsageRecordMapper;
 import com.agent.scope.framework.mapper.ToolCallRecordMapper;
 import lombok.RequiredArgsConstructor;
@@ -51,6 +53,7 @@ public class ChatRecordService {
     private final ChatMessageRecordMapper chatMessageRecordMapper;
     private final ToolCallRecordMapper toolCallRecordMapper;
     private final TokenUsageRecordMapper tokenUsageRecordMapper;
+    private final ModelCallRecordMapper modelCallRecordMapper;
 
     /**
      * 异步保存用户输入消息。
@@ -82,13 +85,15 @@ public class ChatRecordService {
      * 异步保存 LLM 思考过程摘要。
      *
      * @param sessionId 会话 ID
+     * @param userId    用户 ID
      * @param content   思考过程内容摘要
      */
     @Async
-    public void saveThinkingMessage(String sessionId, String content) {
+    public void saveThinkingMessage(String sessionId, String userId, String content) {
         try {
             ChatMessageRecord record = ChatMessageRecord.builder()
                     .sessionId(sessionId)
+                    .userId(userId)
                     .role(ROLE_THINKING)
                     .content(content)
                     .messageTimestamp(System.currentTimeMillis())
@@ -104,13 +109,15 @@ public class ChatRecordService {
      * 异步保存 LLM 最终回复。
      *
      * @param sessionId 会话 ID
+     * @param userId    用户 ID
      * @param content   最终回复内容
      */
     @Async
-    public void saveAssistantMessage(String sessionId, String content) {
+    public void saveAssistantMessage(String sessionId, String userId, String content) {
         try {
             ChatMessageRecord record = ChatMessageRecord.builder()
                     .sessionId(sessionId)
+                    .userId(userId)
                     .role(ROLE_ASSISTANT)
                     .content(content)
                     .messageTimestamp(System.currentTimeMillis())
@@ -176,6 +183,46 @@ public class ChatRecordService {
             tokenUsageRecordMapper.insert(record);
         } catch (Exception e) {
             log.warn("[ChatRecord] 保存Token消耗失败: sessionId={}, error={}", sessionId, e.getMessage());
+        }
+    }
+
+    /**
+     * 异步保存单次模型调用记录。
+     * <p>
+     * 记录 ReAct 循环中每一次 LLM 调用的输出内容、Token 消耗与耗时，
+     * 通过 {@code replyId} 与事件流关联，便于全链路调用链分析。
+     * </p>
+     *
+     * @param sessionId      会话 ID
+     * @param replyId        回复 ID（关联 ModelCallStart/End 事件）
+     * @param outputContent  模型调用输出内容（累积的文本/思考/工具调用片段）
+     * @param inputTokens    输入 Token 数
+     * @param outputTokens   输出 Token 数
+     * @param cachedTokens   缓存命中 Token 数
+     * @param modelName      模型名称
+     * @param durationMs     调用耗时（毫秒）
+     */
+    @Async
+    public void saveModelCall(String sessionId, String replyId, String outputContent,
+                              int inputTokens, int outputTokens, int cachedTokens,
+                              String modelName, long durationMs) {
+        try {
+            ModelCallRecord record = ModelCallRecord.builder()
+                    .sessionId(sessionId)
+                    .replyId(replyId)
+                    .outputContent(outputContent)
+                    .inputTokens(inputTokens)
+                    .outputTokens(outputTokens)
+                    .totalTokens(inputTokens + outputTokens)
+                    .cachedTokens(cachedTokens)
+                    .modelName(modelName)
+                    .durationMs(durationMs)
+                    .createTime(LocalDateTime.now())
+                    .build();
+            modelCallRecordMapper.insert(record);
+        } catch (Exception e) {
+            log.warn("[ChatRecord] 保存模型调用记录失败: sessionId={}, replyId={}, error={}",
+                    sessionId, replyId, e.getMessage());
         }
     }
 }

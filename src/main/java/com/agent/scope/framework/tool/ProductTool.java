@@ -1,5 +1,6 @@
 package com.agent.scope.framework.tool;
 
+import com.agent.scope.framework.constant.BusinessConst;
 import com.agent.scope.framework.context.SessionContext;
 import com.agent.scope.framework.vo.ToolResultVO;
 import com.alibaba.fastjson2.JSONObject;
@@ -59,11 +60,11 @@ public class ProductTool extends AbstractTool {
         log.info("[ProductTool] 搜索产品: sessionContext={}", JSONObject.toJSONString(sessionContext));
         ToolResultVO toolResultVO = new ToolResultVO();
         toolResultVO.setSuccess(true);
-        toolResultVO.setMessage("成功查询到产品信息");
+        toolResultVO.setMessage(BusinessConst.MSG_QUERY_PRODUCT_SUCCESS);
         toolResultVO.setData(JSONObject.parseObject("{\"code\":0,\"data\":[{\"productId\":\"1\",\"productName\":\"方悦\",\"price\":\"￥1.00\",\"skuId\":\"1\"}],\"message\":\"成功\"}"));
         toolResultVO.setRoutePath(ToolResultVO.ROUTE_TEXT_ONLY);
-        toolResultVO.setBroadcastText("成功查询到产品信息");
-        toolResultVO.setAskUser("成功查询到产品信息");
+        toolResultVO.setBroadcastText(BusinessConst.MSG_QUERY_PRODUCT_SUCCESS);
+        toolResultVO.setAskUser(BusinessConst.MSG_QUERY_PRODUCT_SUCCESS);
         return toolResultVO;
     }
 }

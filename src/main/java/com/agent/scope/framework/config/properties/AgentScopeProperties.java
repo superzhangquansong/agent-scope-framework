@@ -6,7 +6,9 @@ import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * AgentScope 配置属性
@@ -22,14 +24,14 @@ import java.util.List;
 @ConfigurationProperties(prefix = "scope.agentscope")
 public class AgentScopeProperties {
 
-    /** 模型供应商：dashscope / ollama */
-    private String modelProvider = "dashscope";
-
-    /** 主模型名称（qwen-plus 文本对话与工具调用） */
+    /** 主模型名称（从 Nacos 配置，默认 qwen-plus） */
     private String modelName = "qwen-plus";
 
-    /** 视觉模型名称（qwen-vl-max 图像理解） */
+    /** 视觉模型名称（从 Nacos 配置，默认 qwen-vl-max） */
     private String visionModelName = "qwen-vl-max";
+
+    /** 降级兜底模型名称（从 Nacos 配置，默认 qwen-turbo） */
+    private String fallbackModelName = "qwen-turbo";
 
     /** 是否启用降级兜底 */
     private boolean fallbackEnabled = true;
@@ -40,10 +42,10 @@ public class AgentScopeProperties {
     /** 上下文压缩阈值（消息条数） */
     private int compactionThreshold = 20;
 
-    /** Root Agent 名称 */
+    /** Root Agent 名称（从 Nacos 配置） */
     private String rootAgentName = "root";
 
-    /** Root Agent 描述 */
+    /** Root Agent 描述（从 Nacos 配置） */
     private String rootAgentDescription = "智能家居主 Agent，负责 ReAct 推理、工具调度与结果聚合";
 
     /** Root Agent 最大迭代次数 */
@@ -54,6 +56,9 @@ public class AgentScopeProperties {
 
     /** 是否启用备用模型回退 */
     private boolean fallbackModelEnabled = false;
+
+    /** HarnessAgent 名称（从 Nacos 配置） */
+    private String harnessAgentName = "scope-harness";
 
     /** DashScope 模型配置 */
     private DashScope dashscope = new DashScope();
@@ -90,6 +95,9 @@ public class AgentScopeProperties {
 
     /** HealthCheck 健康检查配置 */
     private HealthCheck healthCheck = new HealthCheck();
+
+    /** RedisRateLimit 分布式限流配置（基于 Redis + Lua 滑动窗口） */
+    private RedisRateLimit redisRateLimit = new RedisRateLimit();
 
     /**
      * 子 Agent 声明列表（支持 Nacos 热加载）。
@@ -206,24 +214,48 @@ public class AgentScopeProperties {
     public static class Advanced {
         /** 是否启用 Plan Mode 中间件 */
         private boolean planModeEnabled = false;
-
         /** 是否启用 TaskList */
         private boolean taskListEnabled = false;
-
         /** 是否启用 Memory Tools */
         private boolean memoryToolsEnabled = false;
-
         /** 是否启用 Skill Repository */
         private boolean skillRepositoryEnabled = false;
-
         /** 是否启用 OTEL 追踪 */
         private boolean otelTracingEnabled = false;
-
         /** 是否启用 Permission 系统 */
         private boolean permissionEnabled = false;
-
         /** 权限询问工具列表 */
         private String permissionAskTools = "";
+        /** 是否启用中断执行（特性5） */
+        private boolean interruptEnabled = true;
+        /** 是否启用文件系统（特性20） */
+        private boolean filesystemEnabled = true;
+        /** 文件系统类型：local / minio */
+        private String filesystemType = "local";
+        /** 是否启用沙箱（特性21） */
+        private boolean sandboxEnabled = true;
+        /** 沙箱快照类型：local / oss / noop */
+        private String sandboxSnapshotType = "local";
+        /** 是否启用子 Agent（特性22） */
+        private boolean subagentEnabled = true;
+        /** 是否启用 Channel 通信（特性24） */
+        private boolean channelEnabled = false;
+        /** 是否启用 A2A 协议（特性25） */
+        private boolean a2aEnabled = false;
+        /** 是否启用 MCP 协议（特性26） */
+        private boolean mcpEnabled = false;
+        /** 是否启用 Agent as Tool（特性27） */
+        private boolean agentAsToolEnabled = false;
+        /** 是否启用 AG-UI 协议（特性36） */
+        private boolean agUiEnabled = false;
+        /** 是否启用定时唤醒调度（特性38） */
+        private boolean schedulerEnabled = false;
+        /** 是否启用 AgentScope Studio（特性40） */
+        private boolean studioEnabled = false;
+        /** 是否启用任务队列（特性48） */
+        private boolean taskQueueEnabled = false;
+        /** 高级特性扩展参数（热加载） */
+        private Map<String, String> advanced = new HashMap<>();
     }
 
     /**
@@ -273,8 +305,8 @@ public class AgentScopeProperties {
      */
     @Data
     public static class Permission {
-        /** 是否启用权限系统（HITL 人机交互） */
-        private boolean enabled = false;
+        /** 是否启用权限系统（HITL 人机交互），默认启用 */
+        private boolean enabled = true;
 
         /** 需人工审批的敏感工具名称列表 */
         private List<String> askTools = new ArrayList<>();
@@ -323,5 +355,66 @@ public class AgentScopeProperties {
     public static class HealthCheck {
         /** 是否启用 Agent 健康检查端点 */
         private boolean enabled = true;
+    }
+
+    /**
+     * RedisRateLimit 分布式限流配置内部类（特性 43 增强）。
+     *
+     * <p>基于 Redis + Lua 脚本实现滑动窗口限流，支持多实例共享限流计数器。
+     * 相比 Resilience4j 内存限流，Redis 限流在分布式部署下能精确控制全局 QPS。</p>
+     *
+     * <p>Nacos 配置示例：
+     * <pre>
+     * scope:
+     *   agentscope:
+     *     redis-rate-limit:
+     *       enabled: true
+     *       key-prefix: "rate_limit:"
+     *       default-limit: 20
+     *       default-window-seconds: 1
+     *       rules:
+     *         - name: model-call
+     *           limit: 20
+     *           window-seconds: 1
+     *         - name: hdl-api
+     *           limit: 100
+     *           window-seconds: 1
+     *         - name: user-session
+     *           limit: 10
+     *           window-seconds: 1
+     * </pre>
+     * </p>
+     */
+    @Data
+    public static class RedisRateLimit {
+        /** 是否启用 Redis 分布式限流 */
+        private boolean enabled = true;
+
+        /** Redis Key 前缀 */
+        private String keyPrefix = "rate_limit:";
+
+        /** 默认限流阈值（每窗口允许请求数） */
+        private int defaultLimit = 20;
+
+        /** 默认时间窗口（秒） */
+        private int defaultWindowSeconds = 1;
+
+        /** 限流规则列表（按 name 区分，支持多维度限流） */
+        private List<RateLimitRule> rules = new ArrayList<>();
+    }
+
+    /**
+     * 限流规则内部类。
+     */
+    @Data
+    public static class RateLimitRule {
+        /** 规则名称（唯一标识，如 model-call / hdl-api / user-session） */
+        private String name;
+
+        /** 限流阈值（窗口内允许请求数） */
+        private int limit = 20;
+
+        /** 时间窗口大小（秒） */
+        private int windowSeconds = 1;
     }
 }

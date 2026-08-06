@@ -1,0 +1,330 @@
+# ===================================================================
+# AgentScope Java 2.0 GA —— Nacos 配置中心业务配置
+# ===================================================================
+# 部署说明：
+# 1. 将本文件内容推送到 Nacos 配置中心
+# 2. Nacos 命名空间：agent-scope-framework-dev
+# 3. Nacos Data ID：application-config.yml
+# 4. Nacos 分组：SCOPE_GROUP
+# 5. 修改 Nacos 中的配置后，@RefreshScope Bean 自动重建，30秒内生效
+# 6. 本地开发时作为降级配置，Nacos 不可达时自动读取此文件
+# ===================================================================
+
+server:
+  port: 8788
+  tomcat:
+    threads:
+      max: 500
+      min-spare: 50
+    accept-count: 100
+    max-connections: 10000
+    connection-timeout: 30000
+
+spring:
+  # 文件上传限制（支持大 PDF/Word 文档上传）
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
+      file-size-threshold: 0
+
+  # MySQL 数据源（数据库 agent_scope_framework，utf8mb4 防中文乱码）
+  datasource:
+    url: jdbc:mysql://127.0.0.1:30100/agent_scope_framework?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: root
+    password: Hdl@1985..
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  # Redis（独立 DB 索引 5，避免与其他应用 Key 冲突）
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 30101
+      password: hdl778899
+      database: 5
+      timeout: 5000ms
+      lettuce:
+        pool:
+          max-active: 50
+          max-idle: 20
+          min-idle: 5
+
+  # Jackson 序列化配置（Spring Boot 4.x 使用 Jackson 3.x，部分枚举常量已变更）
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      fail-on-empty-beans: false
+
+# ===================================================================
+# AgentScope 核心配置
+# ===================================================================
+scope:
+  agentscope:
+    # 主模型名称（从 Nacos 配置，默认 qwen-plus）
+    model-name: qwen-plus
+    # 视觉模型名称
+    vision-model-name: qwen-vl-max
+    # 降级兜底模型名称
+    fallback-model-name: qwen-turbo
+    # 是否启用降级兜底
+    fallback-enabled: true
+    # Agent 最大迭代次数
+    max-iters: 10
+    # 上下文压缩阈值（消息条数）
+    compaction-threshold: 20
+    # Root Agent 名称
+    root-agent-name: root
+    # Root Agent 描述
+    root-agent-description: 智能家居主 Agent，负责 ReAct 推理、工具调度与结果聚合
+    # Root Agent 最大迭代次数
+    root-agent-max-iters: 10
+    # 模型调用重试次数
+    max-retries: 2
+    # 是否启用备用模型回退
+    fallback-model-enabled: false
+    # HarnessAgent 名称
+    harness-agent-name: scope-harness
+
+    # DashScope（通义千问）模型配置
+    dashscope:
+      api-key: sk-2f8c9cb9fa9f4a78a2e7133b391ca6a2
+      base-url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+      stream: true
+      enable-thinking: false
+      thinking-budget: 1024
+      temperature: 0.3
+      parallel-tool-calls: true
+      vision-enabled: true
+
+    # Ollama（本地模型）配置
+    ollama:
+      base-url: http://127.0.0.1:11434
+      chat-model: qwen2.5:1.5b
+      temperature: 0.3
+      num-ctx: 32768
+      num-predict: 2048
+
+    # HDL 云端 API 配置
+    hdl-api:
+      base-url: https://gateway.hdlcontrol.com
+      app-key: EISTBZLX
+      app-secret: EISTBZMNEISTBZND
+      connect-timeout-ms: 8000
+      read-timeout-ms: 15000
+      auth-error-codes: 401,10001,40001,403,4010,4011,10002,20001,4013
+
+    # Qdrant 向量检索配置
+    qdrant:
+      host: 127.0.0.1
+      port: 30106
+      grpc-port: 30107
+      collection-name: scope_knowledge
+      vector-size: 1536
+
+    # MinIO 对象存储配置
+    minio:
+      endpoint: http://127.0.0.1:30102
+      access-key: hdl-minio-user
+      secret-key: hdl-minio-pass
+      bucket: ai-scope-workspace
+
+    # Embedding 配置
+    embedding:
+      provider: dashscope
+      model: text-embedding-v2
+      api-key: sk-2f8c9cb9fa9f4a78a2e7133b391ca6a2
+      endpoint: https://dashscope.aliyuncs.com/api/v1/services/embeddings/text-embedding/text-embedding
+      vector-size: 1536
+
+    # 测试账号配置
+    test-account:
+      login-name: 19210818109
+      login-pwd: "123456"
+
+    # ===================================================================
+    # AgentScope 2.0 GA 企业级特性配置（48 项特性）
+    # 所有特性配置必须在 scope.agentscope 下，与 @ConfigurationProperties(prefix="scope.agentscope") 对齐
+    # ===================================================================
+
+    # 特性6/34：分布式状态存储（Redis 替代默认 JsonFile）
+    state-store:
+      type: redis
+
+    # 特性18：工作区配置（严禁生成 .agentscope 文件夹）
+    workspace:
+      enabled: true
+      path: /tmp/agentscope-workspace
+
+    # 特性12/13/39：中间件链配置
+    middleware:
+      enabled: true
+
+    # 特性14/15：权限系统配置（HITL 人机交互）
+    permission:
+      enabled: true
+      ask-tools:
+        - batch_control_device
+
+    # 特性44：提示词模板管理（Nacos 动态加载）
+    prompt-templates:
+      enabled: true
+
+    # 特性41/42：工具增强（超时控制 + 结果缓存）
+    tool:
+      enhanced: true
+      timeout-ms: 30000
+      cache-ttl-seconds: 300
+
+    # 可观测性配置
+    observability:
+      enabled: true
+
+    health-check:
+      enabled: true
+
+    # 会话生命周期管理（特性30/31）
+    session:
+      enabled: true
+
+    # 内置工具注册（特性29）
+    builtin-tools:
+      enabled: true
+
+    # 配置版本管理（特性46）
+    config-version:
+      enabled: true
+
+    # 特性43增强：Redis 分布式限流配置（基于 Redis + Lua 滑动窗口，多实例共享计数器）
+    redis-rate-limit:
+      enabled: true                    # 是否启用 Redis 限流
+      key-prefix: "rate_limit:"        # Redis Key 前缀
+      default-limit: 20                # 默认限流阈值（每窗口允许请求数）
+      default-window-seconds: 1        # 默认时间窗口（秒）
+      rules:                           # 限流规则列表（按 name 区分）
+        - name: model-call             # 模型调用限流（防止 LLM API 过载）
+          limit: 20
+          window-seconds: 1
+        - name: hdl-api                # HDL 云端 API 限流（保护下游服务）
+          limit: 100
+          window-seconds: 1
+        - name: user-session           # 用户会话级限流（防止单用户刷接口）
+          limit: 10
+          window-seconds: 1
+
+    # 高级特性开关
+    advanced:
+      plan-mode-enabled: true
+      task-list-enabled: true
+      memory-tools-enabled: true
+      skill-repository-enabled: true
+      otel-tracing-enabled: true
+      permission-enabled: true
+      permission-ask-tools: "batch_control_device"
+      interrupt-enabled: true
+      filesystem-enabled: true
+      filesystem-type: local
+      sandbox-enabled: true
+      sandbox-snapshot-type: local
+      subagent-enabled: true
+      channel-enabled: false
+      a2a-enabled: false
+      mcp-enabled: false
+      agent-as-tool-enabled: false
+      ag-ui-enabled: false
+      scheduler-enabled: false
+      studio-enabled: false
+      task-queue-enabled: false
+
+    # 子 Agent 声明（特性22，Nacos 热加载）
+    subagents:
+      - name: vision
+        description: 视觉理解子 Agent，处理图像识别与描述
+      - name: knowledge
+        description: 知识库查询子 Agent，处理技术参数/规格/说明书查询
+
+# ===================================================================
+# 特性43：Resilience4j 限流熔断配置
+# ===================================================================
+resilience4j:
+  ratelimiter:
+    instances:
+      modelCallRateLimiter:
+        limit-for-period: 20
+        limit-refresh-period: 1s
+        timeout-duration: 10s
+      model-call:
+        limit-for-period: 50
+        limit-refresh-period: 1s
+        timeout-duration: 0
+  circuitbreaker:
+    instances:
+      modelCallCircuitBreaker:
+        failure-rate-threshold: 50
+        slow-call-rate-threshold: 80
+        slow-call-duration-threshold: 30s
+        wait-duration-in-open-state: 60s
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+      hdl-api:
+        register-health-indicator: true
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 3
+
+# ===================================================================
+# MyBatis-Plus 配置
+# ===================================================================
+mybatis-plus:
+  mapper-locations: classpath:mapper/**/*.xml
+  type-aliases-package: com.agent.scope.framework.entity
+  global-config:
+    db-config:
+      id-type: auto
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+  configuration:
+    map-underscore-to-camel-case: true
+    cache-enabled: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+# ===================================================================
+# 可观测性配置（OpenTelemetry + Prometheus）
+# ===================================================================
+management:
+  tracing:
+    sampling:
+      probability: 1.0
+  zipkin:
+    tracing:
+      endpoint: http://127.0.0.1:9411/api/v2/spans
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,env
+  endpoint:
+    health:
+      show-details: always
+    prometheus:
+      enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+# ===================================================================
+# 日志配置
+# ===================================================================
+logging:
+  level:
+    root: INFO
+    com.agent.scope.framework: DEBUG
+    io.agentscope: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{traceId}] %-5level %logger{36} - %msg%n"

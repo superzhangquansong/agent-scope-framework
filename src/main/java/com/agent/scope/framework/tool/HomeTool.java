@@ -1,5 +1,6 @@
 package com.agent.scope.framework.tool;
 
+import com.agent.scope.framework.constant.BusinessConst;
 import com.agent.scope.framework.context.SessionContext;
 import com.agent.scope.framework.vo.ToolResultVO;
 import com.alibaba.fastjson2.JSONObject;
@@ -43,10 +44,10 @@ public class HomeTool extends AbstractTool {
         log.info("[HomeTool] 查询房屋列表: sessionContext={}", JSONObject.toJSONString(sessionContext));
         ToolResultVO toolResultVO = new ToolResultVO();
         toolResultVO.setSuccess(true);
-        toolResultVO.setMessage("成功查询到房屋列表");
+        toolResultVO.setMessage(BusinessConst.MSG_QUERY_HOME_SUCCESS);
         toolResultVO.setData(JSONObject.parseObject("{\"code\":0,\"data\":[{\"houseId\":\"1\",\"houseName\":\"客厅\",\"houseType\":\"Lite\",\"deviceCount\":\"1\"}],\"message\":\"成功\"}"));
-        toolResultVO.setBroadcastText("成功查询到房屋列表");
-        toolResultVO.setAskUser("成功查询到房屋列表");
+        toolResultVO.setBroadcastText(BusinessConst.MSG_QUERY_HOME_SUCCESS);
+        toolResultVO.setAskUser(BusinessConst.MSG_QUERY_HOME_SUCCESS);
         return toolResultVO;
     }
 }

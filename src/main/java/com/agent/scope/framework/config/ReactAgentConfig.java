@@ -4,6 +4,7 @@ import com.agent.scope.framework.config.properties.AgentScopeProperties;
 import io.agentscope.core.ReActAgent;
 import io.agentscope.core.tool.Toolkit;
 import io.agentscope.extensions.model.dashscope.DashScopeChatModel;
+import io.agentscope.extensions.model.dashscope.formatter.DashScopeChatFormatter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -59,8 +60,21 @@ public class ReactAgentConfig {
                 .toolkit(toolkit)
                 .maxIters(properties.getRootAgentMaxIters());
 
+        // 特性16：模型容错 — 重试次数
         if (properties.getMaxRetries() > 0) {
             builder = builder.maxRetries(properties.getMaxRetries());
+        }
+
+        // 特性16：模型容错 — 备用模型回退（主模型不可用时自动切换）
+        if (properties.isFallbackModelEnabled()) {
+            // 降级模型名称从 Nacos 配置读取，避免硬编码
+            DashScopeChatModel fallbackModel = DashScopeChatModel.builder()
+                    .apiKey(properties.getDashscope().getApiKey())
+                    .modelName(properties.getFallbackModelName())
+                    .stream(properties.getDashscope().isStream())
+                    .build();
+            builder = builder.fallbackModel(fallbackModel);
+            log.info("[ReactAgentConfig] 已装配 fallbackModel: {}", properties.getFallbackModelName());
         }
 
         return builder.build();

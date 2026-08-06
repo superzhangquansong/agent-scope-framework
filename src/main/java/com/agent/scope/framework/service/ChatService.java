@@ -1,28 +1,37 @@
 package com.agent.scope.framework.service;
 
 import com.agent.scope.framework.bo.event.*;
+import com.agent.scope.framework.config.properties.AgentScopeProperties;
+import com.agent.scope.framework.constant.BusinessConst;
 import com.agent.scope.framework.constant.FileConst;
 import com.agent.scope.framework.context.SessionContext;
 import com.agent.scope.framework.dto.ChatStreamDTO;
+import com.agent.scope.framework.dto.PermissionConfirmDTO;
 import com.agent.scope.framework.enums.AgentEventEnum;
 import com.agent.scope.framework.enums.ImageTypeEnum;
+import com.agent.scope.framework.enums.MediaTypeEnum;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.event.*;
+import io.agentscope.core.event.ConfirmResult;
 import io.agentscope.core.message.*;
 import io.agentscope.core.model.ChatUsage;
 import io.agentscope.harness.agent.HarnessAgent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import reactor.core.Disposable;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
-import static com.agent.scope.framework.constant.BusinessConst.CTX_KEY_SESSION_CONTEXT;
+import static com.agent.scope.framework.constant.BusinessConst.*;
 
 
 /**
@@ -50,7 +59,8 @@ import static com.agent.scope.framework.constant.BusinessConst.CTX_KEY_SESSION_C
  *   <li>LLM 思考过程摘要（ThinkingBlockEndEvent 时）</li>
  *   <li>工具调用全量信息（ToolResultEndEvent 时，含入参/出参/状态/耗时）</li>
  *   <li>LLM 最终回复（doOnComplete 时）</li>
- *   <li>Token 消耗（ModelCallEndEvent 累积，doOnComplete 时统一保存）</li>
+ *   <li>单次模型调用记录（ModelCallEndEvent 时，含输出内容/Token/耗时/replyId）</li>
+ *   <li>Token 消耗汇总（ModelCallEndEvent 累积，doOnComplete 时统一保存）</li>
  * </ul>
  * </p>
  *
@@ -64,17 +74,253 @@ public class ChatService {
 
     /**
      * Jackson ObjectMapper（线程安全，静态复用，避免每次创建）
+     * <p>用于 Redis 存取待确认权限请求时的 JSON 手动序列化/反序列化，
+     * 绕开 {@code GenericJackson2JsonRedisSerializer} 的 {@code activateDefaultTyping(NON_FINAL)}
+     * 类型 ID 要求（该要求会导致 {@code List<ToolCallInfo>} 反序列化失败）。</p>
      */
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     /**
-     * 模型名称标识（用于 Token 消耗记录）
+     * Redis Key 前缀：待确认权限请求（HITL）。
+     * <p>完整 Key 格式：{@code pending_confirm:{sessionId}}，按会话隔离。</p>
      */
-    private static final String MODEL_NAME = "dashscope";
+    private static final String PENDING_CONFIRM_KEY_PREFIX = "pending_confirm:";
+
+    /**
+     * 待确认权限请求的 Redis TTL（分钟）。
+     * <p>超时后自动清除，避免会话泄漏。30 分钟覆盖典型用户思考时间。</p>
+     */
+    private static final long PENDING_CONFIRM_TTL_MINUTES = 30L;
+
+    /**
+     * Redis 中待确认权限请求 JSON 的 TypeReference（用于 Jackson 反序列化）。
+     */
+    private static final TypeReference<List<PermissionAskEventBO.ToolCallInfo>> PENDING_CONFIRM_TYPE_REF =
+            new TypeReference<>() {};
+
+    /** 用户确认意图关键词（匹配到则视为允许执行） */
+    private static final Set<String> CONFIRM_WORDS = Set.of(
+            "继续", "确认", "同意", "允许", "是", "好", "好的", "可以", "执行", "ok", "yes", "y", "继续执行", "没问题"
+    );
+
+    /** 用户拒绝意图关键词（匹配到则视为拒绝执行） */
+    private static final Set<String> DENY_WORDS = Set.of(
+            "取消", "拒绝", "不要", "否", "不", "不行", "停止", "no", "cancel", "别"
+    );
 
     private final HarnessAgent harnessAgent;
 
     private final ChatRecordService chatRecordService;
+
+    private final AgentScopeProperties agentScopeProperties;
+
+    /**
+     * String Redis 模板（用于持久化待确认权限请求）。
+     * <p>使用 {@link StringRedisTemplate}（Key/Value 均为 String 序列化），
+     * 配合 {@link #OBJECT_MAPPER} 手动序列化/反序列化 JSON，彻底绕开
+     * {@code GenericJackson2JsonRedisSerializer} 的类型 ID 约束问题。</p>
+     * <p>Redis 中的待确认数据与 AgentScope RedisAgentStateStore 的 ASKING 状态同生命周期，
+     * 服务重启后不丢失，确保"继续"等自然语言恢复消息能正确携带 {@link ConfirmResult} 元数据。</p>
+     */
+    private final StringRedisTemplate stringRedisTemplate;
+
+    /**
+     * 活跃会话注册表：sessionId → (Disposable, SseEmitter)。
+     * <p>
+     * 用于支持运行时中断：当用户调用 /api/chat/interrupt 时，直接 dispose 对应的 Reactor 订阅，
+     * 并关闭 SSE 连接。这比依赖框架的 interrupt 标志更可靠，因为 HarnessAgent 的 streamEvents
+     * 产生的 Flux 与 ReActAgent.interrupt() 的中断标志可能不在同一执行上下文。
+     * </p>
+     */
+    private final Map<String, SseEmitter> activeEmitters = new ConcurrentHashMap<>();
+
+    private final Map<String, Disposable> activeSubscriptions = new ConcurrentHashMap<>();
+
+    /**
+     * 中断指定会话的 Agent 执行。
+     * <p>
+     * 直接取消 Reactor 订阅并关闭 SSE 连接，确保 Agent 立即停止。
+     * 同时调用 reActAgent 的 interrupt 作为框架级补充。
+     * </p>
+     *
+     * @param sessionId 会话 ID
+     * @return true 如果成功中断
+     */
+    public boolean interruptSession(String sessionId) {
+        log.info("[Chat] 中断会话: sessionId={}", sessionId);
+
+        boolean interrupted = false;
+
+        // 1. 取消 Reactor 订阅（直接停止 Agent 执行）
+        Disposable subscription = activeSubscriptions.remove(sessionId);
+        if (subscription != null && !subscription.isDisposed()) {
+            subscription.dispose();
+            interrupted = true;
+            log.info("[Chat] Reactor 订阅已取消: sessionId={}", sessionId);
+        }
+
+        // 2. 关闭 SSE 连接
+        SseEmitter emitter = activeEmitters.remove(sessionId);
+        if (emitter != null) {
+            try {
+                sendEvent(emitter, "interrupted", sessionId, Map.of(
+                        "message", "用户已中断执行"));
+                sendDone(emitter);
+                emitter.complete();
+                interrupted = true;
+                log.info("[Chat] SSE 连接已关闭: sessionId={}", sessionId);
+            } catch (IOException e) {
+                log.warn("[Chat] 关闭 SSE 失败: sessionId={}, error={}", sessionId, e.getMessage());
+            }
+        }
+
+        if (!interrupted) {
+            log.warn("[Chat] 未找到活跃会话: sessionId={}", sessionId);
+        }
+
+        return interrupted;
+    }
+
+    /**
+     * 权限确认并恢复 Agent 执行（HITL 人机交互）。
+     *
+     * <p>当敏感工具调用被权限系统拦截为 ASK 决策时，Agent 暂停执行。
+     * 用户在前端确认后，调用此方法发送携带 {@link ConfirmResult} 的消息恢复执行。</p>
+     *
+     * <p>恢复原理：AgentScope 2.0 的 Agent 状态通过 RedisAgentStateStore 持久化，
+     * 工具调用状态为 ASKING。当收到携带 {@code Msg.METADATA_CONFIRM_RESULTS} 的消息时，
+     * Agent 会将 ASKING 状态的工具调用替换为 ALLOWED（确认）或写入 DENIED 结果（拒绝），
+     * 然后从中断点继续执行 ReAct 循环。</p>
+     *
+     * @param dto     权限确认请求
+     * @param emitter SSE 发射器
+     */
+    public void confirmAndResume(PermissionConfirmDTO dto, SseEmitter emitter) {
+        String sessionId = dto.getSessionId();
+        String userId = dto.getUserId();
+        String houseId = dto.getHouseId();
+        String accessToken = dto.getAccessToken();
+
+        final ChatSessionRecorder recorder = new ChatSessionRecorder();
+
+        try {
+            SessionContext ctx = SessionContext.builder()
+                    .userId(userId)
+                    .houseId(houseId)
+                    .sessionId(sessionId)
+                    .accessToken(accessToken)
+                    .build();
+
+            RuntimeContext runtimeContext = RuntimeContext.builder()
+                    .userId(userId)
+                    .sessionId(sessionId)
+                    .put(BusinessConst.CTX_KEY_SESSION_CONTEXT, ctx)
+                    .build();
+
+            // 始终从 Redis 加载待确认的完整数据（含 input 字段），确保 ToolUseBlock 与
+            // 原始 RequireUserConfirmEvent 中的完全一致，Agent 才能匹配 ASKING 状态并恢复
+            List<PermissionAskEventBO.ToolCallInfo> pendingInfos = loadPendingConfirmations(sessionId);
+            if (pendingInfos.isEmpty()) {
+                throw new IllegalStateException(
+                        "未找到待确认的权限请求，可能已超时或已被处理: sessionId=" + sessionId);
+            }
+
+            // 将前端确认决策（如有）与 Redis 中的完整数据合并
+            // 前端传入的 confirms 只含 toolCallId + allowed，需要从 Redis 补充 input 字段
+            Map<String, Boolean> userDecisions = new HashMap<>();
+            List<PermissionConfirmDTO.ConfirmItem> items = dto.getConfirms();
+            if (items != null) {
+                for (PermissionConfirmDTO.ConfirmItem item : items) {
+                    userDecisions.put(item.getToolCallId(), item.isAllowed());
+                }
+            }
+
+            // 构建 ConfirmResult 列表：使用 Redis 中的完整 ToolCallInfo（含 input）
+            // 如果前端未传入决策（confirms 为空），默认全部允许
+            List<ConfirmResult> confirmResults = pendingInfos.stream()
+                    .map(info -> {
+                        // 重建完整的 ToolUseBlock（id + name + input），与原始 ASKING 状态匹配
+                        ToolUseBlock toolUse = ToolUseBlock.builder()
+                                .id(info.getToolCallId())
+                                .name(info.getToolName())
+                                .input(info.getInput())
+                                .build();
+                        // 优先使用前端显式决策，无则默认允许
+                        boolean allowed = userDecisions.getOrDefault(info.getToolCallId(), true);
+                        log.info("[Chat] 权限确认决策: sessionId={}, toolCallId={}, toolName={}, allowed={}, input={}",
+                                sessionId, info.getToolCallId(), info.getToolName(), allowed,
+                                info.getInput() != null ? info.getInput() : "null");
+                        return new ConfirmResult(allowed, toolUse);
+                    })
+                    .toList();
+
+            // 清除 Redis 中的待确认缓存（已通过 API 确认，避免残留数据干扰后续自然语言确认）
+            clearPendingConfirmations(sessionId);
+
+            // 构建携带确认结果的用户消息（遵循官方示例：不设 textContent，只发 metadata）
+            // 设置 textContent 会导致 LLM 当作新用户消息处理，而非恢复 ASKING 状态
+            Msg resumeMsg = UserMessage.builder()
+                    .metadata(Map.of(Msg.METADATA_CONFIRM_RESULTS, confirmResults))
+                    .build();
+
+            log.info("[Chat] 发送权限确认恢复消息: sessionId={}, confirmCount={}", sessionId, confirmResults.size());
+
+            sendEvent(emitter, SSE_EVENT_AGENT_START, sessionId, Map.of());
+
+            harnessAgent.streamEvents(resumeMsg, runtimeContext)
+                    .doOnNext(event -> {
+                        try {
+                            forwardAgentEvent(emitter, sessionId, userId, event, recorder);
+                        } catch (Exception e) {
+                            log.warn("[Chat] SSE事件转发失败: eventType={}, error={}",
+                                    event.getClass().getSimpleName(), e.getMessage());
+                        }
+                    })
+                    .doOnComplete(() -> {
+                        long totalDurationMs = System.currentTimeMillis() - recorder.sessionStartTime;
+                        log.info("[Chat] 权限确认后恢复执行完成: sessionId={}, 总耗时={}ms", sessionId, totalDurationMs);
+
+                        if (recorder.finalReplyContent.length() > 0) {
+                            chatRecordService.saveAssistantMessage(sessionId, userId, recorder.finalReplyContent.toString());
+                        }
+
+                        chatRecordService.saveTokenUsage(sessionId,
+                                recorder.totalInputTokens.get(),
+                                recorder.totalOutputTokens.get(),
+                                agentScopeProperties.getModelName());
+
+                        try {
+                            sendEvent(emitter, SSE_EVENT_AGENT_END, sessionId, Map.of());
+                        } catch (IOException e) {
+                            log.warn("[Chat] 发送 agent_end 失败: {}", e.getMessage());
+                        }
+                        sendDone(emitter);
+                        emitter.complete();
+                    })
+                    .doOnError(err -> {
+                        log.error("[Chat] 权限确认后恢复执行异常: sessionId={}", sessionId, err);
+                        try {
+                            sendEvent(emitter, SSE_EVENT_ERROR, sessionId, Map.of(
+                                    "error", Map.of("code", ERROR_CODE_AGENT_ERROR,
+                                            "message", err.getMessage() != null ? err.getMessage() : "Agent恢复执行异常")));
+                        } catch (IOException ignored) {
+                        }
+                        sendDone(emitter);
+                        emitter.complete();
+                    })
+                    .subscribe();
+
+        } catch (Exception e) {
+            log.error("[Chat] 权限确认处理异常: sessionId={}", sessionId, e);
+            try {
+                sendEvent(emitter, SSE_EVENT_ERROR, sessionId, Map.of(
+                        "error", Map.of("code", ERROR_CODE_INTERNAL_ERROR, "message", e.getMessage())));
+            } catch (IOException ignored) {
+            }
+            sendDone(emitter);
+            emitter.complete();
+        }
+    }
 
     public void streamEvents(ChatStreamDTO dto, SseEmitter emitter) {
         String sessionId = dto.getSessionId();
@@ -106,38 +352,77 @@ public class ChatService {
             chatRecordService.saveUserMessage(sessionId, userId, houseId, dto.getUserMessage());
 
             // 发送 agent_start 事件
-            sendEvent(emitter, "agent_start", sessionId, Map.of());
+            sendEvent(emitter, SSE_EVENT_AGENT_START, sessionId, Map.of());
+
+            // 注册活跃会话（支持中断）
+            activeEmitters.put(sessionId, emitter);
+
+            // 构建 Agent 消息：检测是否有待确认的权限请求（HITL ASKING 状态）
+            Msg agentMessage = buildAgentMessageWithPermissionCheck(dto, sessionId);
 
             // 委托 HarnessAgent 执行 ReAct 推理循环
             // LLM 将自主决策调用哪个工具、如何解析用户指令
             // 所有意图路由、参数构造、设备匹配全部由 LLM 智能完成
-            harnessAgent.streamEvents(buildUserMessage(dto), runtimeContext)
+            Disposable subscription = harnessAgent.streamEvents(agentMessage, runtimeContext)
                     .doOnNext(event -> {
                         try {
-                            forwardAgentEvent(emitter, sessionId, event, recorder);
+                            forwardAgentEvent(emitter, sessionId, userId, event, recorder);
                         } catch (Exception e) {
                             log.warn("[Chat] SSE事件转发失败: eventType={}, error={}",
                                     event.getClass().getSimpleName(), e.getMessage());
                         }
                     })
                     .doOnComplete(() -> {
-                        // Agent 执行完成（含记忆整合等后台收尾）
+                        // 清理活跃会话注册
+                        activeEmitters.remove(sessionId);
+                        activeSubscriptions.remove(sessionId);
+
                         long totalDurationMs = System.currentTimeMillis() - recorder.sessionStartTime;
+
+                        // 权限暂停场景：Agent 因 HITL 确认而暂停，不发送 agent_end
+                        // 改发 permission_paused 事件，告知前端 Agent 正在等待用户确认
+                        if (recorder.permissionPaused) {
+                            log.info("[Chat] Agent 因权限确认暂停: sessionId={}, 耗时={}ms", sessionId, totalDurationMs);
+
+                            // 保存已有的回复内容（Agent 在调用工具前的说明文字）
+                            if (recorder.finalReplyContent.length() > 0) {
+                                chatRecordService.saveAssistantMessage(sessionId, userId, recorder.finalReplyContent.toString());
+                            }
+
+                            // 保存 Token 消耗
+                            chatRecordService.saveTokenUsage(sessionId,
+                                    recorder.totalInputTokens.get(),
+                                    recorder.totalOutputTokens.get(),
+                                    agentScopeProperties.getModelName());
+
+                            // 发送 permission_paused 事件（替代 agent_end，表明 Agent 暂停而非结束）
+                            try {
+                                sendEvent(emitter, "permission_paused", sessionId, Map.of(
+                                        "message", "Agent 等待权限确认，请回复\"继续\"确认或\"取消\"拒绝"));
+                            } catch (IOException e) {
+                                log.warn("[Chat] 发送 permission_paused 失败: {}", e.getMessage());
+                            }
+                            sendDone(emitter);
+                            emitter.complete();
+                            return;
+                        }
+
+                        // 正常完成：Agent 执行完毕（含记忆整合等后台收尾）
                         log.info("[Chat] HarnessAgent 执行完成: sessionId={}, 总耗时={}ms", sessionId, totalDurationMs);
 
                         // 异步保存 LLM 最终回复
                         if (recorder.finalReplyContent.length() > 0) {
-                            chatRecordService.saveAssistantMessage(sessionId, recorder.finalReplyContent.toString());
+                            chatRecordService.saveAssistantMessage(sessionId, userId, recorder.finalReplyContent.toString());
                         }
 
                         // 异步保存 Token 消耗（累积所有 ModelCallEndEvent 的 usage）
                         chatRecordService.saveTokenUsage(sessionId,
                                 recorder.totalInputTokens.get(),
                                 recorder.totalOutputTokens.get(),
-                                MODEL_NAME);
+                                agentScopeProperties.getModelName());
 
                         try {
-                            sendEvent(emitter, "agent_end", sessionId, Map.of());
+                            sendEvent(emitter, SSE_EVENT_AGENT_END, sessionId, Map.of());
                         } catch (IOException e) {
                             log.warn("[Chat] 发送 agent_end 失败: {}", e.getMessage());
                         }
@@ -145,13 +430,53 @@ public class ChatService {
                         emitter.complete();
                     })
                     .doOnError(err -> {
+                        // 清理活跃会话注册
+                        activeEmitters.remove(sessionId);
+                        activeSubscriptions.remove(sessionId);
+
                         log.error("[Chat] HarnessAgent 执行异常: sessionId={}", sessionId, err);
-                        try {
-                            sendEvent(emitter, "error", sessionId, Map.of(
-                                    "error", Map.of("code", "AGENT_ERROR",
-                                            "message", err.getMessage() != null ? err.getMessage() : "Agent执行异常")));
-                        } catch (IOException ignored) {
-                            // SSE 发送失败时无法再通知客户端
+                        String errMsg = err.getMessage() != null ? err.getMessage() : "";
+
+                        // 检测残留 ASKING 状态错误（Redis 中有持久化状态但本次消息未携带 ConfirmResult）
+                        // 触发场景：服务重启后内存缓存丢失、或会话 ID 复用导致旧状态残留
+                        if (errMsg.contains("paused for human-in-the-loop confirmation")) {
+                            log.warn("[Chat] 检测到残留 ASKING 状态: sessionId={}, 尝试从 Redis 恢复待确认数据", sessionId);
+                            List<PermissionAskEventBO.ToolCallInfo> pending = loadPendingConfirmations(sessionId);
+                            if (!pending.isEmpty()) {
+                                // Redis 中有待确认数据，重新发送 permission_ask 事件
+                                log.info("[Chat] 从 Redis 恢复待确认数据成功，重新发送权限确认: sessionId={}", sessionId);
+                                try {
+                                    PermissionAskEventBO eventBO = PermissionAskEventBO.builder()
+                                            .type(AgentEventEnum.PERMISSION_ASK.getDesc())
+                                            .sessionId(sessionId)
+                                            .toolCalls(pending)
+                                            .build();
+                                    emitter.send(SseEmitter.event().data(toJson(eventBO)));
+
+                                    sendEvent(emitter, "permission_paused", sessionId, Map.of(
+                                            "message", "检测到未完成的权限确认，请回复\"继续\"确认或\"取消\"拒绝"));
+                                } catch (IOException e) {
+                                    log.warn("[Chat] 重新发送 permission_ask 失败: {}", e.getMessage());
+                                }
+                            } else {
+                                // Redis 中无待确认数据，提示用户开启新会话
+                                log.warn("[Chat] Redis 中无待确认数据，需清除残留状态: sessionId={}", sessionId);
+                                try {
+                                    sendEvent(emitter, SSE_EVENT_ERROR, sessionId, Map.of(
+                                            "error", Map.of("code", ERROR_CODE_AGENT_ERROR,
+                                                    "message", "检测到上一轮会话残留的权限确认状态，请开启新的会话")));
+                                } catch (IOException ignored) {
+                                }
+                            }
+                        } else {
+                            // 其他异常：正常错误处理
+                            try {
+                                sendEvent(emitter, SSE_EVENT_ERROR, sessionId, Map.of(
+                                        "error", Map.of("code", ERROR_CODE_AGENT_ERROR,
+                                                "message", errMsg.isEmpty() ? "Agent执行异常" : errMsg)));
+                            } catch (IOException ignored) {
+                                // SSE 发送失败时无法再通知客户端
+                            }
                         }
                         sendDone(emitter);
                         emitter.complete();
@@ -161,8 +486,8 @@ public class ChatService {
         } catch (Exception e) {
             log.error("[Chat] 消息处理异常: sessionId={}", sessionId, e);
             try {
-                sendEvent(emitter, "error", sessionId, Map.of(
-                        "error", Map.of("code", "INTERNAL_ERROR", "message", e.getMessage())));
+                sendEvent(emitter, SSE_EVENT_ERROR, sessionId, Map.of(
+                        "error", Map.of("code", ERROR_CODE_INTERNAL_ERROR, "message", e.getMessage())));
             } catch (IOException ignored) {
                 // SSE 发送失败时无法再通知客户端
             }
@@ -171,50 +496,254 @@ public class ChatService {
         }
     }
 
-    // ==================== Agent 事件转发（遵循官方 instanceof 模式）====================
+    // ==================== Redis 待确认权限请求管理（HITL）====================
 
     /**
-     * 根据请求 DTO 构建发送给 Agent 的用户消息。
+     * 将待确认的工具调用缓存到 Redis（替代内存 ConcurrentHashMap）。
      * <p>
-     * 当 {@code images} 非空时构建多模态消息（文本 + 图片 ContentBlock），
-     * 否则回退为纯文本消息。图片来源由 {@link ChatStreamDTO#getImageType()} 决定：
+     * 当 {@link RequireUserConfirmEvent} 触发时调用。将 ToolUseBlock 列表转换为
+     * {@link PermissionAskEventBO.ToolCallInfo} 列表，使用 {@link #OBJECT_MAPPER} 序列化为 JSON 字符串
+     * 存入 Redis，Key 为 {@code pending_confirm:{sessionId}}，TTL 30 分钟。
+     * </p>
+     * <p>使用 {@link StringRedisTemplate} 而非 {@code RedisTemplate<String,Object>} 的原因：
+     * 后者配置的 {@code GenericJackson2JsonRedisSerializer} 启用了 {@code activateDefaultTyping(NON_FINAL)}，
+     * 要求 {@code Object} 类型值携带 {@code @class} 类型 ID，会导致
+     * {@code List<ToolCallInfo>} 反序列化失败（数组无类型 ID）。</p>
+     * <p>使用 Redis 而非内存缓存的原因：AgentScope 的 Agent 状态通过 RedisAgentStateStore
+     * 持久化到 Redis，两者必须同生命周期。内存缓存在服务重启后丢失，而 Redis 中的 ASKING 状态
+     * 仍然存在，导致"继续"消息缺少 ConfirmResult 元数据而报错。</p>
+     *
+     * @param sessionId  会话 ID
+     * @param toolCalls  待确认的 ToolUseBlock 列表（来自 RequireUserConfirmEvent）
+     */
+    private void cachePendingConfirmations(String sessionId, List<ToolUseBlock> toolCalls,
+                                            Map<String, StringBuilder> fallbackArguments) {
+        try {
+            List<PermissionAskEventBO.ToolCallInfo> infos = toolCalls.stream()
+                    .map(tc -> {
+                        Map<String, Object> input = tc.getInput();
+                        // 关键修复：RequireUserConfirmEvent 中的 ToolUseBlock.getInput() 可能返回 null
+                        // 此时从 recorder 的 toolCallArguments（ToolCallDeltaEvent 累积的入参 JSON）回退
+                        if (input == null || input.isEmpty()) {
+                            StringBuilder argsBuilder = fallbackArguments != null ? fallbackArguments.get(tc.getId()) : null;
+                            if (argsBuilder != null && argsBuilder.length() > 0) {
+                                try {
+                                    input = OBJECT_MAPPER.readValue(argsBuilder.toString(),
+                                            new TypeReference<Map<String, Object>>() {});
+                                    log.info("[Chat] ToolUseBlock.input 为空，从 recorder 回退入参: toolCallId={}, input={}",
+                                            tc.getId(), input);
+                                } catch (Exception e) {
+                                    log.warn("[Chat] 解析回退入参失败: toolCallId={}, args={}",
+                                            tc.getId(), argsBuilder, e);
+                                }
+                            } else {
+                                log.warn("[Chat] ToolUseBlock.input 为空且无回退入参: toolCallId={}, toolName={}",
+                                        tc.getId(), tc.getName());
+                            }
+                        }
+                        return PermissionAskEventBO.ToolCallInfo.builder()
+                                .toolCallId(tc.getId())
+                                .toolName(tc.getName())
+                                .input(input)
+                                .build();
+                    })
+                    .toList();
+            String key = PENDING_CONFIRM_KEY_PREFIX + sessionId;
+            String json = OBJECT_MAPPER.writeValueAsString(infos);
+            stringRedisTemplate.opsForValue().set(key, json, Duration.ofMinutes(PENDING_CONFIRM_TTL_MINUTES));
+            log.info("[Chat] 待确认权限请求已缓存到 Redis: sessionId={}, toolCount={}, inputs={}",
+                    sessionId, infos.size(),
+                    infos.stream().map(i -> i.getToolCallId() + ":" + (i.getInput() != null ? "有入参" : "无入参")).toList());
+        } catch (Exception e) {
+            log.error("[Chat] 缓存待确认权限请求失败: sessionId={}", sessionId, e);
+        }
+    }
+
+    /**
+     * 从 Redis 加载待确认的工具调用信息。
+     * <p>读取 Key {@code pending_confirm:{sessionId}} 的 JSON 字符串，使用 {@link #OBJECT_MAPPER}
+     * 反序列化为 {@link PermissionAskEventBO.ToolCallInfo} 列表。Key 不存在或过期时返回空列表。</p>
+     *
+     * @param sessionId 会话 ID
+     * @return 待确认工具调用信息列表（可能为空，不会为 null）
+     */
+    private List<PermissionAskEventBO.ToolCallInfo> loadPendingConfirmations(String sessionId) {
+        try {
+            String key = PENDING_CONFIRM_KEY_PREFIX + sessionId;
+            String json = stringRedisTemplate.opsForValue().get(key);
+            if (json == null || json.isBlank()) {
+                return Collections.emptyList();
+            }
+            return OBJECT_MAPPER.readValue(json, PENDING_CONFIRM_TYPE_REF);
+        } catch (Exception e) {
+            log.error("[Chat] 加载待确认权限请求失败: sessionId={}", sessionId, e);
+            return Collections.emptyList();
+        }
+    }
+
+    /**
+     * 清除 Redis 中的待确认权限请求。
+     * <p>在以下场景调用：
      * <ul>
-     *   <li>{@code "url"}：使用 {@link URLSource} 包装图片 URL</li>
-     *   <li>{@code "base64"}：使用 {@link Base64Source} 包装 Base64 图片数据，
-     *       默认 MIME 类型 {@code image/jpeg}</li>
+     *   <li>用户通过自然语言（继续/确认）恢复后</li>
+     *   <li>用户通过 /api/chat/confirm API 恢复后</li>
+     *   <li>用户拒绝执行后</li>
      * </ul>
      * </p>
      *
-     * @param dto 聊天请求 DTO
-     * @return AgentScope 用户消息
+     * @param sessionId 会话 ID
      */
+    private void clearPendingConfirmations(String sessionId) {
+        try {
+            stringRedisTemplate.delete(PENDING_CONFIRM_KEY_PREFIX + sessionId);
+        } catch (Exception e) {
+            log.warn("[Chat] 清除待确认权限请求失败: sessionId={}", sessionId, e);
+        }
+    }
+
+    // ==================== Agent 消息构建（含 HITL 权限确认处理）====================
+
+    /**
+     * 构建 Agent 消息，自动处理待确认的权限请求（HITL）。
+     *
+     * <p>当上一轮 Agent 执行因敏感工具调用被权限系统拦截（ASKING 状态）时，
+     * AgentScope 要求恢复消息必须携带 {@link ConfirmResult} 元数据。
+     * 本方法从 Redis 检测是否存在当前会话的待确认工具调用：
+     * <ul>
+     *   <li>存在且用户消息匹配确认关键词（继续/确认/同意等）→ 构建 allowed=true 的 ConfirmResult 恢复执行</li>
+     *   <li>存在且用户消息匹配拒绝关键词（取消/拒绝/不要等）→ 构建 allowed=false 的 ConfirmResult 拒绝执行</li>
+     *   <li>存在但用户消息是其他内容 → 默认视为确认（用户可能直接说设备指令而非"确认"二字）</li>
+     *   <li>不存在 → 普通用户消息，走正常 ReAct 流程</li>
+     * </ul>
+     * </p>
+     *
+     * @param dto       聊天请求 DTO
+     * @param sessionId 会话 ID
+     * @return Agent 消息（可能携带 ConfirmResult 元数据）
+     */
+    private Msg buildAgentMessageWithPermissionCheck(ChatStreamDTO dto, String sessionId) {
+        // 从 Redis 加载待确认的工具调用（替代内存缓存，支持服务重启后恢复）
+        List<PermissionAskEventBO.ToolCallInfo> pendingTools = loadPendingConfirmations(sessionId);
+        if (pendingTools.isEmpty()) {
+            // 无待确认权限请求，走正常消息构建
+            return buildUserMessage(dto);
+        }
+
+        // 存在待确认的工具调用，检测用户意图
+        String userMessage = dto.getUserMessage();
+        boolean isDeny = DENY_WORDS.stream().anyMatch(userMessage::contains);
+
+        // 拒绝意图 → allowed=false；其他所有情况（确认词或其他内容）→ allowed=true
+        boolean allowed = !isDeny;
+        log.info("[Chat] 检测到待确认权限请求，自动处理: sessionId={}, userMessage={}, allowed={}",
+                sessionId, userMessage, allowed);
+
+        // 从 Redis 加载的 ToolCallInfo 重建完整 ToolUseBlock（id + name + input）
+        // input 字段必须携带，AgentScope 的 applyConfirmResults 会用此 ToolUseBlock 替换
+        // ASKING 状态的原始 ToolUseBlock，如果 input 缺失，工具执行时将无入参
+        List<ConfirmResult> confirmResults = pendingTools.stream()
+                .map(info -> {
+                    ToolUseBlock toolUse = ToolUseBlock.builder()
+                            .id(info.getToolCallId())
+                            .name(info.getToolName())
+                            .input(info.getInput())
+                            .build();
+                    log.info("[Chat] 自然语言恢复确认: sessionId={}, toolCallId={}, toolName={}, allowed={}, input={}",
+                            sessionId, info.getToolCallId(), info.getToolName(), allowed,
+                            info.getInput() != null ? info.getInput() : "null");
+                    return new ConfirmResult(allowed, toolUse);
+                })
+                .toList();
+
+        // 清除 Redis 中的待确认缓存（已处理完毕）
+        clearPendingConfirmations(sessionId);
+
+        // 构建携带确认结果的用户消息，触发 Agent 从 ASKING 状态恢复
+        // 注意：textContent 保留用户原始消息，因为 /stream 路径下用户可能说"继续"或直接说设备指令
+        return UserMessage.builder()
+                .textContent(userMessage)
+                .metadata(Map.of(Msg.METADATA_CONFIRM_RESULTS, confirmResults))
+                .build();
+    }
+
     private Msg buildUserMessage(ChatStreamDTO dto) {
         String userMessage = dto.getUserMessage();
         List<String> images = dto.getImages();
-        if (images == null || images.isEmpty()) {
-            // 纯文本消息
+        List<String> audios = dto.getAudios();
+        List<String> videos = dto.getVideos();
+
+        // 三类媒体均为空时回退纯文本消息
+        boolean noMedia = (images == null || images.isEmpty())
+                && (audios == null || audios.isEmpty())
+                && (videos == null || videos.isEmpty());
+        if (noMedia) {
             return new UserMessage(userMessage);
         }
 
-        // 多模态消息：文本 + N 个图片 ContentBlock
-        List<ContentBlock> blocks = new ArrayList<>(images.size() + 1);
+        // 多模态消息：文本 + N 个媒体 ContentBlock
+        List<ContentBlock> blocks = new ArrayList<>();
         blocks.add(TextBlock.builder().text(userMessage).build());
 
-        boolean isBase64 = ImageTypeEnum.BASE64.equals(dto.getImageType());
-        for (String image : images) {
-            if (image == null || image.isBlank()) {
+        // 图片块
+        boolean isImageBase64 = ImageTypeEnum.BASE64.equals(dto.getImageType());
+        appendMediaBlocks(blocks, images, isImageBase64, MediaKind.IMAGE);
+
+        // 音频块
+        boolean isAudioBase64 = MediaTypeEnum.BASE64.equals(dto.getAudioType());
+        appendMediaBlocks(blocks, audios, isAudioBase64, MediaKind.AUDIO);
+
+        // 视频块（多媒体）
+        boolean isVideoBase64 = MediaTypeEnum.BASE64.equals(dto.getVideoType());
+        appendMediaBlocks(blocks, videos, isVideoBase64, MediaKind.VIDEO);
+
+        return new UserMessage(blocks);
+    }
+
+    /**
+     * 媒体种类枚举（内部使用，区分图片/音频/视频的构造逻辑与默认 MIME）。
+     */
+    private enum MediaKind {
+        /** 图片 */
+        IMAGE,
+        /** 音频 */
+        AUDIO,
+        /** 视频 */
+        VIDEO
+    }
+
+    /**
+     * 批量追加媒体 ContentBlock 到 blocks 列表。
+     * <p>
+     * 根据 {@code mediaKind} 构造对应 {@link ImageBlock}/{@link AudioBlock}/{@link VideoBlock}，
+     * 跳过空白元素。
+     * </p>
+     *
+     * @param blocks      目标块列表
+     * @param mediaList   媒体数据列表（URL 或 Base64）
+     * @param isBase64    是否为 Base64 编码
+     * @param mediaKind   媒体种类
+     */
+    private void appendMediaBlocks(List<ContentBlock> blocks, List<String> mediaList,
+                                   boolean isBase64, MediaKind mediaKind) {
+        if (mediaList == null || mediaList.isEmpty()) {
+            return;
+        }
+        for (String media : mediaList) {
+            if (media == null || media.isBlank()) {
                 continue;
             }
-            ImageBlock imageBlock = isBase64
-                    ? ImageBlock.builder()
-                      .source(new Base64Source(FileConst.MEDIA_TYPE, image))
-                      .build()
-                    : ImageBlock.builder()
-                      .source(new URLSource(image))
-                      .build();
-            blocks.add(imageBlock);
+            switch (mediaKind) {
+                case IMAGE -> blocks.add(isBase64
+                        ? ImageBlock.builder().source(new Base64Source(FileConst.MEDIA_TYPE, media)).build()
+                        : ImageBlock.builder().source(new URLSource(media)).build());
+                case AUDIO -> blocks.add(isBase64
+                        ? AudioBlock.builder().source(new Base64Source(FileConst.AUDIO_MEDIA_TYPE, media)).build()
+                        : AudioBlock.builder().source(new URLSource(media)).build());
+                case VIDEO -> blocks.add(isBase64
+                        ? VideoBlock.builder().source(new Base64Source(FileConst.VIDEO_MEDIA_TYPE, media)).build()
+                        : VideoBlock.builder().source(new URLSource(media)).build());
+            }
         }
-        return new UserMessage(blocks);
     }
 
     /**
@@ -239,15 +768,19 @@ public class ChatService {
      *
      * @param emitter   SSE 发射器
      * @param sessionId 会话 ID
+     * @param userId    用户 ID
      * @param event     AgentScope 事件
      * @param recorder  会话级别记录容器
      * @throws IOException SSE 发送异常
      */
-    private void forwardAgentEvent(SseEmitter emitter, String sessionId, AgentEvent event,
-                                   ChatSessionRecorder recorder) throws IOException {
-        // 独立处理 Token 累积（不影响后续 instanceof 转发链）
-        if (event instanceof ModelCallEndEvent mce) {
-            accumulateTokenUsage(mce, recorder);
+    private void forwardAgentEvent(SseEmitter emitter, String sessionId, String userId,
+                                   AgentEvent event, ChatSessionRecorder recorder) throws IOException {
+        // 独立处理模型调用 Start/End：记录耗时、累积 Token、保存模型调用记录、推送前端事件
+        // 此处先处理，避免落入后续 else 兜底分支导致信息丢失
+        if (event instanceof ModelCallStartEvent mcs) {
+            handleModelCallStart(emitter, sessionId, mcs, recorder);
+        } else if (event instanceof ModelCallEndEvent mce) {
+            handleModelCallEnd(emitter, sessionId, mce, recorder);
         }
 
         // 按官方文档的 instanceof 模式分别处理各类事件
@@ -255,6 +788,8 @@ public class ChatService {
             // 流式文本片段：只转发增量文本，构造轻量 JSON（最热点路径，必须轻量）
             if (delta.getDelta() != null) {
                 recorder.finalReplyContent.append(delta.getDelta());
+                // 按 replyId 累积到对应模型调用输出，用于落库 ModelCallRecord
+                appendModelCallOutput(recorder, delta.getReplyId(), delta.getDelta());
             }
             TextBlockDeltaEventBO eventBO = TextBlockDeltaEventBO.builder()
                     .type(AgentEventEnum.TEXT_DELTA.getDesc())
@@ -286,6 +821,8 @@ public class ChatService {
             // 思考过程增量：转发增量文本，前端累加渲染推理过程
             if (tb.getDelta() != null) {
                 recorder.thinkingContent.append(tb.getDelta());
+                // 按 replyId 累积到对应模型调用输出，用于落库 ModelCallRecord
+                appendModelCallOutput(recorder, tb.getReplyId(), tb.getDelta());
             }
             ThinkingBlockDeltaEventBO eventBO = ThinkingBlockDeltaEventBO.builder()
                     .type(AgentEventEnum.THINKING_DELTA.getDesc())
@@ -308,7 +845,7 @@ public class ChatService {
 
             // 异步保存本次思考过程摘要（一次 ReAct 迭代可能产生多次思考，分别落库）
             if (recorder.thinkingContent.length() > 0) {
-                chatRecordService.saveThinkingMessage(sessionId, recorder.thinkingContent.toString());
+                chatRecordService.saveThinkingMessage(sessionId, userId, recorder.thinkingContent.toString());
                 recorder.thinkingContent.setLength(0);
             }
 
@@ -336,6 +873,8 @@ public class ChatService {
                 if (args != null) {
                     args.append(tc.getDelta());
                 }
+                // 按 replyId 累积工具入参片段到模型调用输出，用于落库 ModelCallRecord
+                appendModelCallOutput(recorder, tc.getReplyId(), tc.getDelta());
             }
             ToolCallDeltaEventBO eventBO = ToolCallDeltaEventBO.builder()
                     .type(AgentEventEnum.TOOL_CALL_DELTA.getDesc())
@@ -401,6 +940,52 @@ public class ChatService {
             // 异步保存工具调用完整记录（入参/出参/状态/耗时）
             saveToolCallRecord(sessionId, tr, state, recorder);
 
+        } else if (event instanceof RequireUserConfirmEvent ruc) {
+            // 特性14/15：权限 HITL — 敏感工具调用需用户确认
+            // Agent 暂停执行，缓存待确认的 ToolUseBlock 到 Redis，前端展示确认界面
+            // 用户可通过 /api/chat/confirm 接口或直接发"继续"/"确认"/"拒绝"等自然语言恢复
+            log.info("[Chat] 权限确认请求: sessionId={}, replyId={}, toolCalls={}",
+                    sessionId, ruc.getReplyId(),
+                    ruc.getToolCalls().stream().map(tcb -> tcb.getName()
+                            + "(input=" + (tcb.getInput() != null ? "有" : "无") + ")").toList());
+
+            // 缓存到 Redis，传入 recorder.toolCallArguments 作为入参回退来源
+            // 关键修复：RequireUserConfirmEvent 的 ToolUseBlock.getInput() 可能返回 null，
+            // 需要从 recorder 累积的 ToolCallDeltaEvent 入参中回退
+            cachePendingConfirmations(sessionId, ruc.getToolCalls(), recorder.toolCallArguments);
+
+            // 标记会话为权限暂停状态，doOnComplete 时据此区分正常结束与暂停
+            recorder.permissionPaused = true;
+
+            List<PermissionAskEventBO.ToolCallInfo> toolCallInfos = ruc.getToolCalls().stream()
+                    .map(tc -> {
+                        Map<String, Object> input = tc.getInput();
+                        if (input == null || input.isEmpty()) {
+                            StringBuilder argsBuilder = recorder.toolCallArguments.get(tc.getId());
+                            if (argsBuilder != null && argsBuilder.length() > 0) {
+                                try {
+                                    input = OBJECT_MAPPER.readValue(argsBuilder.toString(),
+                                            new TypeReference<Map<String, Object>>() {});
+                                } catch (Exception ignored) {
+                                }
+                            }
+                        }
+                        return PermissionAskEventBO.ToolCallInfo.builder()
+                                .toolCallId(tc.getId())
+                                .toolName(tc.getName())
+                                .input(input)
+                                .build();
+                    })
+                    .toList();
+
+            PermissionAskEventBO eventBO = PermissionAskEventBO.builder()
+                    .type(AgentEventEnum.PERMISSION_ASK.getDesc())
+                    .sessionId(sessionId)
+                    .replyId(ruc.getReplyId())
+                    .toolCalls(toolCallInfos)
+                    .build();
+            emitter.send(SseEmitter.event().data(toJson(eventBO)));
+
         } else if (event instanceof AgentEndEvent end) {
             // Agent 完全结束（含记忆整合后）：关闭 SSE
             // 注意：AgentEndEvent 在记忆整合之后才触发，此时 SSE 才最终关闭
@@ -409,7 +994,8 @@ public class ChatService {
             // 当前实现不提前关闭，等 AgentEndEvent 统一关闭，保证消息完整性
 
         } else {
-            // 其他事件（AgentStartEvent/ModelCallStartEvent/ModelCallEndEvent 等）
+            // 其他事件（AgentStartEvent/ExceedMaxItersEvent 等）
+            // ModelCallStartEvent/ModelCallEndEvent 已在方法开头显式处理，不会落入此分支
             // 这些事件频率低且非热点，可全量序列化
             AgentOtherEventBO eventBO = AgentOtherEventBO.builder()
                     .type(event.getClass().getSimpleName())
@@ -424,24 +1010,107 @@ public class ChatService {
     }
 
     /**
-     * 从 {@link ModelCallEndEvent} 中累积 Token 消耗到会话记录容器。
+     * 处理模型调用开始事件。
      * <p>
-     * 一次 ReAct 循环可能触发多次模型调用（每次迭代一次），此处逐次累加，
-     * 最终在 doOnComplete 中统一落库。
+     * 记录调用起始时间（按 replyId），并向前端推送 {@code model_call_start} 事件，
+     * 前端可据此渲染"AI 正在思考..."状态。
      * </p>
      *
-     * @param event    模型调用结束事件
-     * @param recorder 会话记录容器
+     * @param emitter   SSE 发射器
+     * @param sessionId 会话 ID
+     * @param event     模型调用开始事件
+     * @param recorder  会话记录容器
+     * @throws IOException SSE 发送异常
      */
-    private void accumulateTokenUsage(ModelCallEndEvent event, ChatSessionRecorder recorder) {
+    private void handleModelCallStart(SseEmitter emitter, String sessionId,
+                                      ModelCallStartEvent event, ChatSessionRecorder recorder) throws IOException {
+        String replyId = event.getReplyId();
+        if (replyId != null) {
+            recorder.modelCallStartTimes.put(replyId, System.currentTimeMillis());
+            recorder.modelCallOutputs.put(replyId, new StringBuilder());
+        }
+        ModelCallStartEventBO eventBO = ModelCallStartEventBO.builder()
+                .type(AgentEventEnum.MODEL_CALL_START.getDesc())
+                .sessionId(sessionId)
+                .replyId(replyId)
+                .build();
+        emitter.send(SseEmitter.event().data(toJson(eventBO)));
+    }
+
+    /**
+     * 处理模型调用结束事件。
+     * <p>
+     * 累积本次调用的 Token 消耗到会话总量，异步保存单次模型调用记录
+     * （输出内容 / Token / 耗时），并向前端推送 {@code model_call_end} 事件，
+     * 前端可据此更新 Token 用量统计与"思考结束"状态。
+     * </p>
+     *
+     * @param emitter   SSE 发射器
+     * @param sessionId 会话 ID
+     * @param event     模型调用结束事件
+     * @param recorder  会话记录容器
+     * @throws IOException SSE 发送异常
+     */
+    private void handleModelCallEnd(SseEmitter emitter, String sessionId,
+                                    ModelCallEndEvent event, ChatSessionRecorder recorder) throws IOException {
+        String replyId = event.getReplyId();
+        int inputTokens = 0;
+        int outputTokens = 0;
+        int cachedTokens = 0;
         try {
             ChatUsage usage = event.getUsage();
             if (usage != null) {
-                recorder.totalInputTokens.addAndGet(usage.getInputTokens());
-                recorder.totalOutputTokens.addAndGet(usage.getOutputTokens());
+                inputTokens = usage.getInputTokens();
+                outputTokens = usage.getOutputTokens();
+                cachedTokens = usage.getCachedTokens();
+                // 累积到会话总量，doOnComplete 时统一保存 TokenUsageRecord
+                recorder.totalInputTokens.addAndGet(inputTokens);
+                recorder.totalOutputTokens.addAndGet(outputTokens);
             }
         } catch (Exception e) {
             log.debug("[Chat] 获取Token使用量失败: {}", e.getMessage());
+        }
+
+        // 计算本次模型调用耗时并取出累积输出内容
+        Long startTime = replyId != null ? recorder.modelCallStartTimes.remove(replyId) : null;
+        long durationMs = startTime != null ? System.currentTimeMillis() - startTime : 0L;
+        StringBuilder outputBuilder = replyId != null ? recorder.modelCallOutputs.remove(replyId) : null;
+        String outputContent = outputBuilder != null ? outputBuilder.toString() : null;
+
+        // 异步保存单次模型调用记录（输出内容 / Token / 耗时 / replyId）
+        chatRecordService.saveModelCall(sessionId, replyId, outputContent,
+                inputTokens, outputTokens, cachedTokens, agentScopeProperties.getModelName(), durationMs);
+
+        ModelCallEndEventBO eventBO = ModelCallEndEventBO.builder()
+                .type(AgentEventEnum.MODEL_CALL_END.getDesc())
+                .sessionId(sessionId)
+                .replyId(replyId)
+                .inputTokens(inputTokens)
+                .outputTokens(outputTokens)
+                .totalTokens(inputTokens + outputTokens)
+                .build();
+        emitter.send(SseEmitter.event().data(toJson(eventBO)));
+    }
+
+    /**
+     * 按 {@code replyId} 累积模型调用输出片段到会话记录容器。
+     * <p>
+     * 在 {@link ModelCallStartEvent} 之后、{@link ModelCallEndEvent} 之前，
+     * 所有 TextBlock/ThinkingBlock/ToolCall 的 delta 片段都归属于同一 replyId，
+     * 此处统一累积，{@link #handleModelCallEnd} 时取出作为模型调用输出落库。
+     * </p>
+     *
+     * @param recorder 会话记录容器
+     * @param replyId  回复 ID
+     * @param delta    增量片段
+     */
+    private void appendModelCallOutput(ChatSessionRecorder recorder, String replyId, String delta) {
+        if (replyId == null || delta == null) {
+            return;
+        }
+        StringBuilder output = recorder.modelCallOutputs.get(replyId);
+        if (output != null) {
+            output.append(delta);
         }
     }
 
@@ -550,6 +1219,14 @@ public class ChatService {
         private final long sessionStartTime = System.currentTimeMillis();
 
         /**
+         * Agent 是否因权限确认（HITL）而暂停。
+         * <p>当 {@link RequireUserConfirmEvent} 触发时置为 true，{@code doOnComplete} 据此
+         * 区分正常结束与权限暂停：暂停时不发送 {@code agent_end}，改发 {@code permission_paused}。</p>
+         * <p>使用 volatile 保证跨线程可见性（事件发射与 doOnComplete 可能在不同线程）。</p>
+         */
+        private volatile boolean permissionPaused = false;
+
+        /**
          * 当前思考块内容累积器（ThinkingBlockDeltaEvent 累加，ThinkingBlockEndEvent 落库后清空）
          */
         private final StringBuilder thinkingContent = new StringBuilder();
@@ -575,12 +1252,29 @@ public class ChatService {
         private final Map<String, StringBuilder> toolCallResults = new ConcurrentHashMap<>();
 
         /**
-         * 累积输入 Token 总数
+         * 模型调用开始时间映射：replyId → 开始时间戳（毫秒）
+         * <p>
+         * {@link ModelCallStartEvent} 时写入，{@link ModelCallEndEvent} 时取出计算耗时。
+         * </p>
+         */
+        private final Map<String, Long> modelCallStartTimes = new ConcurrentHashMap<>();
+
+        /**
+         * 模型调用输出累积映射：replyId → 输出内容累积器
+         * <p>
+         * 在 ModelCallStart 与 ModelCallEnd 之间，所有 TextBlock/ThinkingBlock/ToolCall
+         * 的 delta 片段按 replyId 累积，ModelCallEnd 时取出落库到 ModelCallRecord。
+         * </p>
+         */
+        private final Map<String, StringBuilder> modelCallOutputs = new ConcurrentHashMap<>();
+
+        /**
+         * 累积输入 Token 总量（所有模型调用累加）
          */
         private final AtomicLong totalInputTokens = new AtomicLong(0);
 
         /**
-         * 累积输出 Token 总数
+         * 累积输出 Token 总量（所有模型调用累加）
          */
         private final AtomicLong totalOutputTokens = new AtomicLong(0);
     }

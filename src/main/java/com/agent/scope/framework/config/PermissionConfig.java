@@ -38,7 +38,8 @@ import java.util.List;
 @Slf4j
 @Configuration
 @RequiredArgsConstructor
-@ConditionalOnProperty(prefix = "scope.agentscope.permission", name = "enabled", havingValue = "true")
+@ConditionalOnProperty(prefix = "scope.agentscope.permission", name = "enabled",
+        havingValue = "true", matchIfMissing = true)
 public class PermissionConfig {
 
     private final AgentScopeProperties properties;
@@ -47,12 +48,18 @@ public class PermissionConfig {
      * 权限上下文状态 Bean
      * <p>
      * 配置权限系统的全局模式和工具级规则：
-     * - 模式：DEFAULT（所有操作都需要显式规则或用户确认，最安全）
-     * - 拒绝规则：batch_control_device（批量设备控制需审批）
+     * - 模式：ACCEPT_EDITS（只读工具自动放行，非只读工具需显式规则或用户确认）
+     * - ASK 规则：batch_control_device（批量设备控制需审批）
      * </p>
      * <p>
-     * 权限规则由 scope.agentscope.permission.ask-tools 配置项指定，
-     * 列出需要人工审批的敏感工具名称（List<String> 形式，支持 Nacos 热更新）。
+     * <b>模式选择说明</b>：
+     * <ul>
+     *   <li>DEFAULT：所有操作都需显式 ALLOW 规则，否则走 ASK → 只读工具也会被拦截</li>
+     *   <li>ACCEPT_EDITS：只读工具（@Tool(readOnly=true)）自动 ALLOW，非只读工具走规则匹配</li>
+     *   <li>BYPASS：全部放行（不安全）</li>
+     * </ul>
+     * 本项目使用 ACCEPT_EDITS，确保 query_device_list/search_product 等只读工具直接放行，
+     * 仅 batch_control_device 等写入操作需用户确认。
      * </p>
      *
      * @return PermissionContextState 权限上下文状态
@@ -62,10 +69,10 @@ public class PermissionConfig {
         AgentScopeProperties.Permission permission = properties.getPermission();
         List<String> askTools = permission.getAskTools();
 
-        log.info("[PermissionConfig] 创建权限上下文: mode=DEFAULT, askTools={}", askTools);
+        log.info("[PermissionConfig] 创建权限上下文: mode=ACCEPT_EDITS, askTools={}", askTools);
 
         PermissionContextState.Builder builder = PermissionContextState.builder()
-                .mode(PermissionMode.DEFAULT);
+                .mode(PermissionMode.ACCEPT_EDITS);
 
         // 配置需要人工审批的敏感工具（如批量设备控制、下单等）
         if (askTools != null && !askTools.isEmpty()) {

@@ -2,6 +2,7 @@ package com.agent.scope.framework.config.properties;
 
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.stereotype.Component;
 
 /**
@@ -29,6 +30,7 @@ import org.springframework.stereotype.Component;
  */
 @Data
 @Component
+@RefreshScope
 @ConfigurationProperties(prefix = "scope.agentscope.ollama")
 public class OllamaProperties {
 

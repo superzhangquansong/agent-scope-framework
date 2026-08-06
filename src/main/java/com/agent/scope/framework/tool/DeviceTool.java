@@ -1,5 +1,6 @@
 package com.agent.scope.framework.tool;
 
+import com.agent.scope.framework.constant.BusinessConst;
 import com.agent.scope.framework.context.SessionContext;
 import com.agent.scope.framework.vo.ToolResultVO;
 import com.alibaba.fastjson2.JSONObject;
@@ -45,10 +46,10 @@ public class DeviceTool extends AbstractTool {
         log.info("[DeviceTool] 查询设备列表（全部）: sessionContext={}", JSONObject.toJSONString(sessionContext));
         ToolResultVO toolResultVO = new ToolResultVO();
         toolResultVO.setSuccess(true);
-        toolResultVO.setMessage("成功查询到设备信息");
+        toolResultVO.setMessage(BusinessConst.MSG_QUERY_DEVICE_SUCCESS);
         toolResultVO.setData(JSONObject.parseObject("{\"code\":0,\"data\":[{\"deviceId\":\"1\",\"deviceName\":\"方悦\",\"deviceType\":\"RGB\",\"gatewayId\":\"1\",\"sid\":\"1\"}],\"message\":\"成功\"}"));
-        toolResultVO.setBroadcastText("成功查询到设备信息");
-        toolResultVO.setAskUser("成功查询到设备信息");
+        toolResultVO.setBroadcastText(BusinessConst.MSG_QUERY_DEVICE_SUCCESS);
+        toolResultVO.setAskUser(BusinessConst.MSG_QUERY_DEVICE_SUCCESS);
         return toolResultVO;
     }
 
@@ -78,10 +79,10 @@ public class DeviceTool extends AbstractTool {
         log.info("[DeviceTool] 查询设备详情: sessionContext={}", JSONObject.toJSONString(sessionContext));
         ToolResultVO toolResultVO = new ToolResultVO();
         toolResultVO.setSuccess(true);
-        toolResultVO.setMessage("成功查询到设备信息");
+        toolResultVO.setMessage(BusinessConst.MSG_QUERY_DEVICE_SUCCESS);
         toolResultVO.setData(JSONObject.parseObject("{\"code\":0,\"data\":[{\"deviceId\":\"1\",\"deviceName\":\"方悦\",\"deviceType\":\"RGB\",\"gatewayId\":\"1\",\"sid\":\"1\"}],\"message\":\"成功\"}"));
-        toolResultVO.setBroadcastText("成功查询到设备信息");
-        toolResultVO.setAskUser("成功查询到设备信息");
+        toolResultVO.setBroadcastText(BusinessConst.MSG_QUERY_DEVICE_SUCCESS);
+        toolResultVO.setAskUser(BusinessConst.MSG_QUERY_DEVICE_SUCCESS);
         return toolResultVO;
     }
 
@@ -123,12 +124,55 @@ public class DeviceTool extends AbstractTool {
             RuntimeContext runtimeContext) {
         SessionContext sessionContext = resolveSessionContext(runtimeContext);
         log.info("[DeviceTool] 批量控制设备: actionsJson={}, sessionContext={}", actionsJson, JSONObject.toJSONString(sessionContext));
+
         ToolResultVO toolResultVO = new ToolResultVO();
         toolResultVO.setSuccess(true);
-        toolResultVO.setMessage("成功批量控制设备");
-        toolResultVO.setData(JSONObject.parseObject("{\"code\":0,\"data\":[{\"deviceId\":\"1\",\"deviceName\":\"方悦\",\"deviceType\":\"RGB\",\"gatewayId\":\"1\",\"sid\":\"1\"}],\"message\":\"成功\"}"));
-        toolResultVO.setBroadcastText("成功批量控制设备");
-        toolResultVO.setAskUser("成功批量控制设备");
+        toolResultVO.setMessage(BusinessConst.MSG_BATCH_CONTROL_SUCCESS);
+        toolResultVO.setBroadcastText(BusinessConst.MSG_BATCH_CONTROL_SUCCESS);
+        toolResultVO.setAskUser(BusinessConst.MSG_BATCH_CONTROL_SUCCESS);
+
+        // 解析 actionsJson，构建每个设备的控制结果，让 LLM 明确知道哪些设备控制成功
+        try {
+            com.alibaba.fastjson2.JSONArray actions = com.alibaba.fastjson2.JSON.parseArray(actionsJson);
+            com.alibaba.fastjson2.JSONArray controlResults = new com.alibaba.fastjson2.JSONArray();
+
+            for (int i = 0; i < actions.size(); i++) {
+                JSONObject action = actions.getJSONObject(i);
+                String deviceId = action.getString("deviceId");
+                String gatewayId = action.getString("gatewayId");
+                String userInput = action.getString("userInput");
+
+                // 构建单个设备的控制结果（模拟 HDL API 返回）
+                JSONObject result = new JSONObject();
+                result.put("deviceId", deviceId);
+                result.put("gatewayId", gatewayId);
+                result.put("userInput", userInput);
+                result.put("status", "SUCCESS");
+                result.put("message", "设备控制指令已发送: " + userInput);
+                controlResults.add(result);
+
+                log.info("[DeviceTool] 设备控制成功: deviceId={}, gatewayId={}, userInput={}",
+                        deviceId, gatewayId, userInput);
+            }
+
+            // 返回结构化的控制结果，包含每个设备的执行状态
+            JSONObject data = new JSONObject();
+            data.put("code", 0);
+            data.put("controlResults", controlResults);
+            data.put("totalDevices", actions.size());
+            data.put("successCount", actions.size());
+            data.put("message", "所有设备控制指令已成功发送");
+            toolResultVO.setData(data);
+
+        } catch (Exception e) {
+            log.error("[DeviceTool] 解析 actionsJson 失败: actionsJson={}, error={}", actionsJson, e.getMessage());
+            // 解析失败时返回错误结果，让 LLM 知道参数格式有问题
+            JSONObject data = new JSONObject();
+            data.put("code", -1);
+            data.put("message", "actionsJson 格式错误: " + e.getMessage());
+            toolResultVO.setData(data);
+        }
+
         return toolResultVO;
     }
 }

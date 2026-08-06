@@ -1,16 +1,25 @@
 package com.agent.scope.framework.config;
 
 import com.agent.scope.framework.config.properties.AgentScopeProperties;
+import com.agent.scope.framework.middleware.ObservabilityMiddleware;
+import com.agent.scope.framework.middleware.ResilienceMiddleware;
+import com.agent.scope.framework.middleware.ToolEnhancementMiddleware;
 import io.agentscope.core.middleware.MiddlewareBase;
 import io.agentscope.core.tracing.OtelTracingMiddleware;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.ratelimiter.RateLimiter;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * AgentScope 2.0 GA 特性十二/十三/三十九：中间件链 + Hook 系统 + OpenTelemetry 集成配置
@@ -43,18 +52,23 @@ public class MiddlewareChainConfig {
      * 中间件链 Bean
      * <p>
      * 装配五阶段中间件链，按从外到内的顺序排列：
-     * - OtelTracingMiddleware：在 onAgent/onModelCall/onActing 三个位置打点，
-     *   按层级生成 span（invoke_agent → chat → execute_tool）
-     * </p>
-     * <p>
-     * 当 OpenTelemetry SDK 未配置时，OtelTracingMiddleware 的所有 hook 会直接短路，
-     * 几乎零开销。
+     * 1. OtelTracingMiddleware：OpenTelemetry 分布式链路追踪（特性39）
+     * 2. ObservabilityMiddleware：Prometheus 指标收集（特性45）
+     * 3. ResilienceMiddleware：限流熔断（特性43）
+     * 4. ToolEnhancementMiddleware：工具超时控制 + 结果缓存（特性41/42）
      * </p>
      *
      * @return 中间件列表
      */
     @Bean
-    public List<MiddlewareBase> middlewareChain() {
+    public List<MiddlewareBase> middlewareChain(
+            Optional<Counter> modelCallCounter,
+            Optional<Timer> modelCallTimer,
+            Optional<Counter> toolCallCounter,
+            Optional<Duration> toolExecutionTimeout,
+            Optional<ToolEnhancementConfig.ToolResultCache> toolResultCache,
+            Optional<RateLimiter> modelCallRateLimiter,
+            Optional<CircuitBreaker> modelCallCircuitBreaker) {
         List<MiddlewareBase> middlewares = new ArrayList<>();
 
         // 1. OpenTelemetry 追踪中间件（特性39）
@@ -63,9 +77,26 @@ public class MiddlewareChainConfig {
             log.info("[MiddlewareChainConfig] 已装配 OtelTracingMiddleware（分布式链路追踪）");
         }
 
-        // 2. 后续可扩展：权限中间件、日志审计中间件、限流中间件等
-        // middlewares.add(new PermissionMiddleware());
-        // middlewares.add(new AuditLogMiddleware());
+        // 2. 可观测性中间件（特性45）— Prometheus 指标真正接入链路
+        if (modelCallCounter.isPresent() && modelCallTimer.isPresent() && toolCallCounter.isPresent()) {
+            middlewares.add(new ObservabilityMiddleware(
+                    modelCallCounter.get(), modelCallTimer.get(), toolCallCounter.get()));
+            log.info("[MiddlewareChainConfig] 已装配 ObservabilityMiddleware（Prometheus 指标收集）");
+        }
+
+        // 3. 限流熔断中间件（特性43）— Resilience4j 真正接入链路
+        if (modelCallRateLimiter.isPresent() && modelCallCircuitBreaker.isPresent()) {
+            middlewares.add(new ResilienceMiddleware(
+                    modelCallRateLimiter.get(), modelCallCircuitBreaker.get()));
+            log.info("[MiddlewareChainConfig] 已装配 ResilienceMiddleware（限流熔断）");
+        }
+
+        // 4. 工具增强中间件（特性41/42）— 超时控制 + 结果缓存真正接入链路
+        if (toolExecutionTimeout.isPresent() && toolResultCache.isPresent()) {
+            middlewares.add(new ToolEnhancementMiddleware(
+                    toolExecutionTimeout.get(), toolResultCache.get()));
+            log.info("[MiddlewareChainConfig] 已装配 ToolEnhancementMiddleware（工具超时+缓存）");
+        }
 
         log.info("[MiddlewareChainConfig] 中间件链装配完成，共 {} 个中间件", middlewares.size());
         return middlewares;
