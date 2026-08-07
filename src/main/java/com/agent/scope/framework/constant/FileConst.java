@@ -9,8 +9,6 @@ package com.agent.scope.framework.constant;
  */
 public interface FileConst {
 
-    String BASE64 = "base64";
-
     /**
      * 图片默认 MIME 类型
      */

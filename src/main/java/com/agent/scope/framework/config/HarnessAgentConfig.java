@@ -8,10 +8,12 @@ import io.agentscope.core.skill.repository.AgentSkillRepository;
 import io.agentscope.core.state.AgentStateStore;
 import io.agentscope.core.tool.Toolkit;
 import io.agentscope.extensions.model.dashscope.DashScopeChatModel;
+import io.agentscope.extensions.sandbox.kubernetes.KubernetesFilesystemSpec;
 import io.agentscope.harness.agent.HarnessAgent;
 import io.agentscope.harness.agent.filesystem.spec.LocalFilesystemSpec;
 import io.agentscope.harness.agent.memory.compaction.CompactionConfig;
 import io.agentscope.harness.agent.subagent.SubagentDeclaration;
+import io.agentscope.harness.agent.workspace.plan.PlanModeManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -118,10 +120,26 @@ public class HarnessAgentConfig {
     /**
      * 文件系统规范（由 FilesystemConfig 注入，特性20）
      * 提供 Agent 文件读写能力（read_file/write_file/edit_file/grep/glob/ls）
-     * 注意：LocalFilesystemSpec 非直接 AbstractFilesystem 子类，此处仅记录就绪状态，
-     * 不直接装配到 Builder（避免类型不匹配）。
+     * 通过 {@code builder.filesystem(fs)} 装配到 HarnessAgent。
      */
     private final Optional<LocalFilesystemSpec> filesystemSpec;
+
+    /**
+     * 沙箱文件系统规范（由 SandboxConfig 注入，特性21/32）
+     * <p>
+     * 基于 K3s 的 {@link KubernetesFilesystemSpec}，将不可信代码（Shell/Python）隔离在
+     * K8s Pod 内执行，并支持快照恢复。优先于 {@link LocalFilesystemSpec} 装配到 HarnessAgent。
+     * 仅在 {@code scope.agentscope.advanced.sandbox-enabled=true} 时存在。
+     * </p>
+     */
+    private final Optional<KubernetesFilesystemSpec> kubernetesFilesystemSpec;
+
+    /**
+     * 计划模式管理器（由 PlanModeConfig 注入，特性23/35）
+     * 仅在 scope.agentscope.advanced.plan-mode-enabled=true 时装配。
+     * 存在则调 {@code builder.enablePlanMode()} 启用计划模式。
+     */
+    private final Optional<PlanModeManager> planModeManager;
 
     /**
      * 技能仓库（由 SkillRepositoryConfig 注入，特性28/33）
@@ -209,9 +227,24 @@ public class HarnessAgentConfig {
             log.info("[HarnessAgentConfig] 已装配权限系统: mode={}", permCtx.getClass().getSimpleName());
         });
 
-        // 特性20：文件系统规范已就绪，暂不直接装配到 Builder（类型不匹配，留待后续扩展）
-        filesystemSpec.ifPresent(fs -> {
-            log.info("[HarnessAgentConfig] 文件系统规范已就绪（暂未装配到 Builder）: {}", fs.getClass().getSimpleName());
+        // 特性20/21/32：文件系统装配到 Builder
+        // 优先使用沙箱文件系统（K3s 安全执行 shell + 快照恢复），回退到本地文件系统
+        if (kubernetesFilesystemSpec.isPresent()) {
+            builder.filesystem(kubernetesFilesystemSpec.get());
+            log.info("[HarnessAgentConfig] 已装配沙箱文件系统（K8s）: {}", kubernetesFilesystemSpec.get().getClass().getSimpleName());
+        } else {
+            filesystemSpec.ifPresent(fs -> {
+                builder.filesystem(fs);
+                log.info("[HarnessAgentConfig] 已装配本地文件系统: {}", fs.getClass().getSimpleName());
+            });
+        }
+
+        // 特性23/35：计划模式（PlanMode + PlanNotebook）
+        // 仅在 plan-mode-enabled=true 时装配，通过 enablePlanMode() 启用
+        // 计划模式下 Agent 先规划再执行，plan_enter/plan_write/plan_exit 三阶段切换
+        planModeManager.ifPresent(mgr -> {
+            builder.enablePlanMode();
+            log.info("[HarnessAgentConfig] 已装配计划模式: planDir=plans");
         });
 
         // 特性28/33：技能仓库（Markdown 技能沉淀与动态加载）

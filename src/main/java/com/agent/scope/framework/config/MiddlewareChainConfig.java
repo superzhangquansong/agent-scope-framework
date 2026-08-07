@@ -1,7 +1,9 @@
 package com.agent.scope.framework.config;
 
+import com.agent.scope.framework.config.PromptTemplateConfig.PromptTemplateHolder;
 import com.agent.scope.framework.config.properties.AgentScopeProperties;
 import com.agent.scope.framework.middleware.ObservabilityMiddleware;
+import com.agent.scope.framework.middleware.PromptRefreshMiddleware;
 import com.agent.scope.framework.middleware.ResilienceMiddleware;
 import com.agent.scope.framework.middleware.ToolEnhancementMiddleware;
 import io.agentscope.core.middleware.MiddlewareBase;
@@ -68,7 +70,8 @@ public class MiddlewareChainConfig {
             Optional<Duration> toolExecutionTimeout,
             Optional<ToolEnhancementConfig.ToolResultCache> toolResultCache,
             Optional<RateLimiter> modelCallRateLimiter,
-            Optional<CircuitBreaker> modelCallCircuitBreaker) {
+            Optional<CircuitBreaker> modelCallCircuitBreaker,
+            Optional<PromptTemplateHolder> promptTemplateHolder) {
         List<MiddlewareBase> middlewares = new ArrayList<>();
 
         // 1. OpenTelemetry 追踪中间件（特性39）
@@ -97,6 +100,12 @@ public class MiddlewareChainConfig {
                     toolExecutionTimeout.get(), toolResultCache.get()));
             log.info("[MiddlewareChainConfig] 已装配 ToolEnhancementMiddleware（工具超时+缓存）");
         }
+
+        // 5. 系统提示词热更新中间件（特性44增强）— Nacos 变更后无需重启即生效
+        promptTemplateHolder.ifPresent(holder -> {
+            middlewares.add(new PromptRefreshMiddleware(holder));
+            log.info("[MiddlewareChainConfig] 已装配 PromptRefreshMiddleware（系统提示词 Nacos 热更新）");
+        });
 
         log.info("[MiddlewareChainConfig] 中间件链装配完成，共 {} 个中间件", middlewares.size());
         return middlewares;

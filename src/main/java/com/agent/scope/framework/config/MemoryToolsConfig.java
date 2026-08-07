@@ -1,6 +1,8 @@
 package com.agent.scope.framework.config;
 
-import com.agent.scope.framework.config.properties.AgentScopeProperties;
+import com.agent.scope.framework.exception.BusinessException;
+import com.agent.scope.framework.exception.ErrorCode;
+import io.agentscope.core.tool.Toolkit;
 import io.agentscope.harness.agent.tool.MemoryGetTool;
 import io.agentscope.harness.agent.tool.MemorySaveTool;
 import io.agentscope.harness.agent.tool.MemorySearchTool;
@@ -13,8 +15,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Optional;
 
 /**
@@ -33,8 +33,8 @@ import java.util.Optional;
  * 与上下文压缩（Compaction）配合：压缩前先把新事实写入流水账，避免压缩丢失关键信息。
  * </p>
  * <p>
- * 注意：以上四个工具均需 {@link WorkspaceManager} 作为构造参数，故本配置在工作区
- * 可用时基于工作区路径构建 {@link WorkspaceManager} 并装配工具；工作区未启用时返回空列表。
+ * 本配置在工作区可用时构建 {@link WorkspaceManager} 并将四个记忆工具
+ * 直接注册到 {@link Toolkit}，使 Agent 可自主调用。
  * </p>
  *
  * @author zqs
@@ -46,38 +46,55 @@ import java.util.Optional;
 @ConditionalOnProperty(prefix = "scope.agentscope.advanced", name = "memory-tools-enabled", havingValue = "true")
 public class MemoryToolsConfig {
 
-    private final AgentScopeProperties properties;
-
     /**
-     * 长期记忆工具集 Bean。
+     * 记忆工具注册初始化 Bean。
      * <p>
-     * 装配四个记忆工具实例，注册到 Toolkit 后 Agent 可自主调用：
-     * <ul>
-     *   <li>{@link MemorySearchTool}：语义搜索长期记忆</li>
-     *   <li>{@link MemoryGetTool}：按 ID 获取记忆</li>
-     *   <li>{@link MemorySaveTool}：保存关键事实</li>
-     *   <li>{@link SessionSearchTool}：搜索历史会话</li>
-     * </ul>
+     * 启动时将四个长期记忆工具注册到 Toolkit，与业务工具统一管理。
+     * 工作区未启用时跳过注册并打印警告。
      * </p>
      *
-     * @param agentWorkspacePath 工作区路径（由 WorkspaceConfig 注入）
-     * @return 记忆工具列表（工作区未启用时为空）
+     * @param toolkit             工具容器（由 ToolkitConfig 注入）
+     * @param agentWorkspacePath  工作区路径（由 WorkspaceConfig 注入）
+     * @return 注册结果标识
      */
     @Bean
-    public List<Object> memoryTools(Optional<Path> agentWorkspacePath) {
+    public String memoryToolsInitializer(Toolkit toolkit,
+                                         Optional<Path> agentWorkspacePath) {
         if (agentWorkspacePath.isEmpty()) {
-            log.warn("[MemoryToolsConfig] 工作区未启用，长期记忆工具集跳过装配");
-            return new ArrayList<>();
+            log.warn("[MemoryToolsConfig] 工作区未启用，长期记忆工具集跳过注册");
+            return "memory-tools-skipped";
         }
 
         WorkspaceManager workspaceManager = new WorkspaceManager(agentWorkspacePath.get());
-        List<Object> tools = new ArrayList<>(4);
-        tools.add(new MemorySearchTool(workspaceManager));
-        tools.add(new MemoryGetTool(workspaceManager));
-        tools.add(new MemorySaveTool(workspaceManager));
-        tools.add(new SessionSearchTool(workspaceManager));
-        log.info("[MemoryToolsConfig] 长期记忆工具集已装配: count={} (memory_search/memory_get/memory_save/session_search)",
-                tools.size());
-        return tools;
+        int count = 0;
+
+        // 依次注册四个记忆工具到 Toolkit
+        count += registerTool(toolkit, new MemorySearchTool(workspaceManager), "memory_search");
+        count += registerTool(toolkit, new MemoryGetTool(workspaceManager), "memory_get");
+        count += registerTool(toolkit, new MemorySaveTool(workspaceManager), "memory_save");
+        count += registerTool(toolkit, new SessionSearchTool(workspaceManager), "session_search");
+
+        log.info("[MemoryToolsConfig] 长期记忆工具集已注册到 Toolkit: count={}", count);
+        return "memory-tools-registered-" + count;
+    }
+
+    /**
+     * 注册单个工具到 Toolkit，失败时抛出 {@link BusinessException}。
+     *
+     * @param toolkit  工具容器
+     * @param tool     工具实例
+     * @param toolName 工具名称（用于日志）
+     * @return 1=注册成功，0=注册失败
+     */
+    private int registerTool(Toolkit toolkit, Object tool, String toolName) {
+        try {
+            toolkit.registerTool(tool);
+            log.info("[MemoryToolsConfig] 注册记忆工具: {}", toolName);
+            return 1;
+        } catch (Exception e) {
+            log.error("[MemoryToolsConfig] 注册记忆工具失败: {}, error={}", toolName, e.getMessage());
+            throw new BusinessException(ErrorCode.TOOL_REGISTER_FAILED,
+                    "注册记忆工具失败: " + toolName, e);
+        }
     }
 }

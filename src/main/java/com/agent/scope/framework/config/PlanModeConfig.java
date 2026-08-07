@@ -12,6 +12,7 @@ import org.springframework.context.annotation.Configuration;
 
 import java.nio.file.Path;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * AgentScope 2.0 GA 特性二十三/三十五：计划模式（Plan Mode）+ PlanNotebook 配置
@@ -37,6 +38,11 @@ import java.util.Optional;
 @RequiredArgsConstructor
 @ConditionalOnProperty(prefix = "scope.agentscope.advanced", name = "plan-mode-enabled", havingValue = "true")
 public class PlanModeConfig {
+
+    /** 只读工具名前缀集合（计划模式下仅允许这些前缀的工具执行） */
+    private static final Set<String> READ_ONLY_PREFIXES = Set.of(
+            "read_", "query_", "list_", "get_", "search_"
+    );
 
     private final AgentScopeProperties properties;
 
@@ -77,13 +83,10 @@ public class PlanModeConfig {
         if (planModeManager.isEmpty()) {
             return Optional.empty();
         }
-        // 只读工具判定器：工具名以 read_/query_/list_/get_/search_ 开头视为只读
+        // 只读工具判定器：工具名以 READ_ONLY_PREFIXES 中任一前缀开头视为只读
         PlanModeMiddleware middleware = new PlanModeMiddleware(planModeManager.get(),
-                toolName -> toolName != null && (toolName.startsWith("read_")
-                        || toolName.startsWith("query_")
-                        || toolName.startsWith("list_")
-                        || toolName.startsWith("get_")
-                        || toolName.startsWith("search_")));
+                toolName -> toolName != null
+                        && READ_ONLY_PREFIXES.stream().anyMatch(toolName::startsWith));
         log.info("[PlanModeConfig] 计划模式中间件已装配");
         return Optional.of(middleware);
     }

@@ -125,8 +125,54 @@
                 <artifactId>agentscope-extensions-mysql</artifactId>
                 <version>${agentscope.version}</version>
             </dependency>
+            <!-- AgentScope 沙箱扩展 - Kubernetes 后端（特性21/32，避免 Docker daemon） -->
+            <dependency>
+                <groupId>io.agentscope</groupId>
+                <artifactId>agentscope-extensions-sandbox-kubernetes</artifactId>
+                <version>${agentscope.version}</version>
+            </dependency>
+            <!-- AgentScope 定时调度扩展（特性38） -->
+            <dependency>
+                <groupId>io.agentscope</groupId>
+                <artifactId>agentscope-extensions-scheduler-quartz</artifactId>
+                <version>${agentscope.version}</version>
+            </dependency>
+            <!-- AgentScope Channel 通信扩展（特性24） -->
+            <dependency>
+                <groupId>io.agentscope</groupId>
+                <artifactId>agentscope-extensions-channel-common</artifactId>
+                <version>${agentscope.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.agentscope</groupId>
+                <artifactId>agentscope-extensions-channel-feishu</artifactId>
+                <version>${agentscope.version}</version>
+            </dependency>
+            <!-- AgentScope AG-UI 协议扩展（特性36） -->
+            <dependency>
+                <groupId>io.agentscope</groupId>
+                <artifactId>agentscope-extensions-agui</artifactId>
+                <version>${agentscope.version}</version>
+            </dependency>
+            <!-- AgentScope MCP 协议扩展 - Nacos 注册中心（特性26） -->
+            <dependency>
+                <groupId>io.agentscope</groupId>
+                <artifactId>agentscope-extensions-mcp-nacos</artifactId>
+                <version>1.0.3</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
+
+    <!-- ==================== 仓库配置（绕过阿里云镜像直连 Maven 中央仓库，拉取 agentscope 扩展包） ==================== -->
+    <repositories>
+        <repository>
+            <id>rdc-releases</id>
+            <name>Maven Central Direct</name>
+            <url>https://repo1.maven.org/maven2/</url>
+            <releases><enabled>true</enabled></releases>
+            <snapshots><enabled>false</enabled></snapshots>
+        </repository>
+    </repositories>
 
     <!-- ==================== 依赖 ==================== -->
     <dependencies>
@@ -242,6 +288,48 @@
             <artifactId>agentscope-extensions-mysql</artifactId>
         </dependency>
 
+        <!-- AgentScope 沙箱扩展 - Kubernetes 后端（特性21/32：K3s 安全执行 shell + 快照恢复） -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-sandbox-kubernetes</artifactId>
+        </dependency>
+
+        <!-- AgentScope 定时调度扩展（特性38：Quartz 定时唤醒 Agent） -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-scheduler-quartz</artifactId>
+        </dependency>
+
+        <!-- AgentScope Channel 通信扩展（特性24：Agent 间消息总线，飞书渠道） -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-channel-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-channel-feishu</artifactId>
+        </dependency>
+
+        <!-- AgentScope AG-UI 协议扩展（特性36：AG-UI 前端协议适配） -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-agui</artifactId>
+        </dependency>
+
+        <!-- AgentScope MCP 协议扩展 - Nacos 注册中心（特性26：MCP 工具动态发现与调用） -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-mcp-nacos</artifactId>
+            <version>1.0.3</version>
+            <exclusions>
+                <!-- 排除 agentscope-core 1.x，使用项目的 agentscope 2.0.0 -->
+                <exclusion>
+                    <groupId>io.agentscope</groupId>
+                    <artifactId>agentscope-core</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
         <!-- Scope 核心组件（私有仓库，部署时通过内部 Nexus 拉取） -->
         <!-- 如需本地开发，请将 com.scope.core 系列包安装至本地 Maven 仓库 -->
 
@@ -298,6 +386,13 @@
             <groupId>com.jayway.jsonpath</groupId>
             <artifactId>json-path</artifactId>
             <version>${jsonpath.version}</version>
+        </dependency>
+
+        <!-- Fabric8 Kubernetes Client（特性21/32：K3s 沙箱后端） -->
+        <dependency>
+            <groupId>io.fabric8</groupId>
+            <artifactId>kubernetes-client</artifactId>
+            <version>6.13.5</version>
         </dependency>
 
         <!-- Netty DNS 解析（macOS 原生支持） -->

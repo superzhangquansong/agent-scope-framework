@@ -72,6 +72,9 @@ public class AgentScopeProperties {
     /** Advanced 高级特性配置 */
     private Advanced advanced = new Advanced();
 
+    /** MCP 协议配置（特性26：MCP 服务器列表） */
+    private Mcp mcp = new Mcp();
+
     /** StateStore 分布式状态存储配置 */
     private StateStore stateStore = new StateStore();
 
@@ -220,6 +223,8 @@ public class AgentScopeProperties {
         private boolean memoryToolsEnabled = false;
         /** 是否启用 Skill Repository */
         private boolean skillRepositoryEnabled = false;
+        /** 是否启用技能自动沉淀（特性33：Agent 完成复杂任务后自动生成 SKILL.md） */
+        private boolean skillPromotionEnabled = false;
         /** 是否启用 OTEL 追踪 */
         private boolean otelTracingEnabled = false;
         /** 是否启用 Permission 系统 */
@@ -236,6 +241,20 @@ public class AgentScopeProperties {
         private boolean sandboxEnabled = true;
         /** 沙箱快照类型：local / oss / noop */
         private String sandboxSnapshotType = "local";
+        /** 沙箱容器镜像（K3s Pod 镜像，如 ubuntu:24.04） */
+        private String sandboxImage = "ubuntu:24.04";
+        /** 沙箱所在 K8s 命名空间 */
+        private String sandboxNamespace = "default";
+        /** 沙箱容器内工作区根路径 */
+        private String sandboxWorkspaceRoot = "/tmp/agentscope-workspace";
+        /** 沙箱 Pod 容器名前缀 */
+        private String sandboxContainerName = "agentscope-sandbox";
+        /** 沙箱 Pod 使用的 ServiceAccount（K8s RBAC 隔离） */
+        private String sandboxServiceAccount = "default";
+        /** 沙箱 Pod CPU 请求（K8s resources.requests.cpu） */
+        private String sandboxCpuRequest = "500m";
+        /** 沙箱 Pod 内存请求（K8s resources.requests.memory） */
+        private String sandboxMemoryRequest = "512Mi";
         /** 是否启用子 Agent（特性22） */
         private boolean subagentEnabled = true;
         /** 是否启用 Channel 通信（特性24） */
@@ -416,5 +435,44 @@ public class AgentScopeProperties {
 
         /** 时间窗口大小（秒） */
         private int windowSeconds = 1;
+    }
+
+    /**
+     * MCP 协议配置内部类（特性26）。
+     * <p>
+     * 配置 Nacos 注册中心管理的 MCP 服务器列表，每个服务器对应一个 MCP Server 名称，
+     * NacosMcpServerManager 通过该名称从 Nacos 动态发现 MCP Server 详情（地址/协议/工具列表）。
+     * </p>
+     * <p>
+     * Nacos 配置示例：
+     * <pre>
+     * scope:
+     *   agentscope:
+     *     mcp:
+     *       servers:
+     *         - name: filesystem-mcp
+     *         - name: search-mcp
+     * </pre>
+     * </p>
+     */
+    @Data
+    public static class Mcp {
+        /** MCP 服务器列表（按 name 标识，name 需与 Nacos 中注册的 MCP Server 名称一致） */
+        private List<McpServer> servers = new ArrayList<>();
+    }
+
+    /**
+     * MCP 服务器配置内部类。
+     */
+    @Data
+    public static class McpServer {
+        /** MCP Server 名称（需与 Nacos 注册中心中注册的 MCP Server 名称一致） */
+        private String name;
+
+        /** 需包含的工具名列表（为空表示注册全部工具） */
+        private List<String> includeTools = new ArrayList<>();
+
+        /** 需排除的工具名列表 */
+        private List<String> excludeTools = new ArrayList<>();
     }
 }
