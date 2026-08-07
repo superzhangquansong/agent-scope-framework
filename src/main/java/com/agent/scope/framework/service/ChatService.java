@@ -139,48 +139,39 @@ public class ChatService {
     private final Map<String, Disposable> activeSubscriptions = new ConcurrentHashMap<>();
 
     /**
-     * 中断指定会话的 Agent 执行。
+     * 发送中断通知事件（不关闭 SSE、不 dispose 订阅）。
      * <p>
-     * 直接取消 Reactor 订阅并关闭 SSE 连接，确保 Agent 立即停止。
-     * 同时调用 reActAgent 的 interrupt 作为框架级补充。
+     * 根据官方文档，中断应通过 {@code ReActAgent.interrupt(userId, sessionId)} 设置标志，
+     * 由 ReAct 循环在下一检查点优雅终止。{@code handleInterrupt} 自动保存 AgentState 到 Redis，
+     * 然后 Reactor Flux 正常完成触发 {@code doOnComplete} 发送 {@code agent_end}。
+     * </p>
+     * <p>
+     * 本方法仅向前端推送一个 {@code interrupted} 通知事件（让前端即时反馈"正在中断"），
+     * <b>不 dispose 订阅、不关闭 SSE</b>——否则会绕过 {@code handleInterrupt} 的状态保存，
+     * 导致下次 call 无法从中断点恢复。
      * </p>
      *
      * @param sessionId 会话 ID
-     * @return true 如果成功中断
+     * @return true 如果找到了活跃 SSE 连接并发送了通知
      */
     public boolean interruptSession(String sessionId) {
-        log.info("[Chat] 中断会话: sessionId={}", sessionId);
+        log.info("[Chat] 发送中断通知: sessionId={}", sessionId);
 
-        boolean interrupted = false;
-
-        // 1. 取消 Reactor 订阅（直接停止 Agent 执行）
-        Disposable subscription = activeSubscriptions.remove(sessionId);
-        if (subscription != null && !subscription.isDisposed()) {
-            subscription.dispose();
-            interrupted = true;
-            log.info("[Chat] Reactor 订阅已取消: sessionId={}", sessionId);
-        }
-
-        // 2. 关闭 SSE 连接
-        SseEmitter emitter = activeEmitters.remove(sessionId);
+        SseEmitter emitter = activeEmitters.get(sessionId);
         if (emitter != null) {
             try {
+                // 只发送通知事件，不关闭 SSE，等待 doOnComplete 统一关闭
                 sendEvent(emitter, "interrupted", sessionId, Map.of(
-                        "message", "用户已中断执行"));
-                sendDone(emitter);
-                emitter.complete();
-                interrupted = true;
-                log.info("[Chat] SSE 连接已关闭: sessionId={}", sessionId);
+                        "message", "用户已请求中断，Agent 将在下一检查点终止"));
+                log.info("[Chat] 中断通知已发送: sessionId={}", sessionId);
+                return true;
             } catch (IOException e) {
-                log.warn("[Chat] 关闭 SSE 失败: sessionId={}, error={}", sessionId, e.getMessage());
+                log.warn("[Chat] 发送中断通知失败: sessionId={}, error={}", sessionId, e.getMessage());
             }
         }
 
-        if (!interrupted) {
-            log.warn("[Chat] 未找到活跃会话: sessionId={}", sessionId);
-        }
-
-        return interrupted;
+        log.warn("[Chat] 未找到活跃 SSE 连接: sessionId={}", sessionId);
+        return false;
     }
 
     /**
@@ -526,8 +517,7 @@ public class ChatService {
                     })
                     .subscribe(); // 触发异步执行
 
-            // 关键修复：将订阅存入 activeSubscriptions，供 interruptSession() 直接 dispose
-            // 此前漏存导致 /api/chat/interrupt 无法取消正在运行的 Reactor Flux，Agent 继续执行
+            // 将订阅存入 activeSubscriptions（用于生命周期追踪，doOnComplete/doOnError 中清理）
             activeSubscriptions.put(sessionId, subscription);
             log.info("[Chat] 已注册活跃订阅: sessionId={}, 可被中断", sessionId);
 
