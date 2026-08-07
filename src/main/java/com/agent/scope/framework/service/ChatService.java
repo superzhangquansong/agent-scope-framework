@@ -372,6 +372,16 @@ public class ChatService {
 
             pendingConfirmationService.clearPendingConfirmations(sessionId);
 
+            // 检测用户是否拒绝了全部工具调用
+            // 框架 applyConfirmResults 在 confirmed=false 时只写 "Permission denied by user" 到上下文
+            // 然后继续 resumeAgent() 推理循环，LLM 可能调用其他工具绕路
+            // 此时标记 userDenied，doOnNext 拦截事件不转发，doOnComplete 直接发 agent_end
+            boolean allDenied = confirmResults.stream().noneMatch(ConfirmResult::isConfirmed);
+            if (allDenied) {
+                recorder.userDenied = true;
+                log.info("[Chat] 用户拒绝全部工具调用，将拦截 LLM 绕路事件: sessionId={}", sessionId);
+            }
+
             // 官方 resumeMsg 只设 metadata；有备注时附加 textContent
             UserMessage.Builder resumeBuilder = UserMessage.builder()
                     .metadata(Map.of(Msg.METADATA_CONFIRM_RESULTS, confirmResults));
@@ -389,6 +399,11 @@ public class ChatService {
 
             Disposable resumeSubscription = harnessAgent.streamEvents(resumeMsg, runtimeContext)
                     .doOnNext(event -> {
+                        // 用户拒绝全部工具时，框架仍会继续推理（调用其他工具绕路），
+                        // 拦截这些事件不转发给前端
+                        if (recorder.userDenied) {
+                            return;
+                        }
                         try {
                             forwardAgentEvent(emitter, sessionId, userId, event, recorder);
                         } catch (Exception e) {
@@ -416,6 +431,21 @@ public class ChatService {
                         if (wasInterrupted) {
                             log.info("[Chat] 权限恢复后框架优雅中断完成: sessionId={}, 耗时={}ms",
                                     sessionId, totalDurationMs);
+                            return;
+                        }
+
+                        // 用户拒绝场景：框架后台已清理 ASKING 状态，前端直接发 agent_end
+                        // 不转发 LLM 的绕路输出（searchProduct 等无关工具调用）
+                        if (recorder.userDenied) {
+                            log.info("[Chat] 用户拒绝操作，直接结束: sessionId={}, 耗时={}ms",
+                                    sessionId, totalDurationMs);
+                            try {
+                                sendEvent(emitter, SSE_EVENT_AGENT_END, sessionId, Map.of());
+                            } catch (IOException e) {
+                                log.warn("[Chat] 发送 agent_end 失败: {}", e.getMessage());
+                            }
+                            sendDone(emitter);
+                            emitter.complete();
                             return;
                         }
 
@@ -1003,6 +1033,16 @@ public class ChatService {
          * <p>使用 volatile 保证跨线程可见性（事件发射与 doOnComplete 可能在不同线程）。</p>
          */
         public volatile boolean permissionPaused = false;
+
+        /**
+         * 用户是否拒绝了全部工具调用（HITL 确认）。
+         * <p>当 {@code confirmAndResume} 收到全部 {@code allowed=false} 时置为 true。
+         * 框架 {@code applyConfirmResults} 在 confirmed=false 时只写入 "Permission denied by user"
+         * 到上下文然后继续 ReAct 循环（官方源码 ReActAgent.java:1639-1653），
+         * LLM 可能调用其他工具绕路。此标志用于在 {@code doOnNext} 中拦截 LLM 事件，
+         * 不转发给前端；{@code doOnComplete} 中直接发送 agent_end。</p>
+         */
+        public volatile boolean userDenied = false;
 
         /** 当前思考块内容累积器（ThinkingBlockDeltaEvent 累加，ThinkingBlockEndEvent 落库后清空） */
         public final StringBuilder thinkingContent = new StringBuilder();
