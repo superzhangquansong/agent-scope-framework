@@ -31,6 +31,13 @@ public class PermissionConfirmDTO {
     /** 访问令牌 */
     private String accessToken;
 
+    /**
+     * 用户消息（自然语言确认/拒绝）。
+     * <p>当前端不传 {@link #confirms} 数组时，可通过此字段发送"继续"/"取消"等自然语言。
+     * ChatService 会检测拒绝关键词（取消/拒绝/不要等）来判断 allowed。</p>
+     */
+    private String userMessage;
+
     /** 确认项列表（每个待确认的工具调用一项） */
     private List<ConfirmItem> confirms;
 

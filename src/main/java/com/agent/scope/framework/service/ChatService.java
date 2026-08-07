@@ -238,8 +238,16 @@ public class ChatService {
                 }
             }
 
+            // 当 confirms 数组为空时，通过 userMessage 自然语言检测用户意图
+            // 匹配 DENY_WORDS（取消/拒绝/不要等）→ allowed=false，其他一律 allowed=true
+            String userMessage = dto.getUserMessage();
+            boolean naturalLanguageDeny = userMessage != null
+                    && DENY_WORDS.stream().anyMatch(userMessage::contains);
+            if (naturalLanguageDeny) {
+                log.info("[Chat] 自然语言检测到拒绝意图: sessionId={}, userMessage={}", sessionId, userMessage);
+            }
+
             // 构建 ConfirmResult 列表：使用 Redis 中的完整 ToolCallInfo（含 input + suggestedRules）
-            // 如果前端未传入决策（confirms 为空），默认全部允许
             List<ConfirmResult> confirmResults = pendingInfos.stream()
                     .map(info -> {
                         // 重建完整的 ToolUseBlock（id + name + input），与原始 ASKING 状态匹配
@@ -248,21 +256,21 @@ public class ChatService {
                                 .name(info.getToolName())
                                 .input(info.getInput())
                                 .build();
-                        // 优先使用前端显式决策，无则默认允许
-                        boolean allowed = userDecisions.getOrDefault(info.getToolCallId(), true);
+                        // 优先使用前端显式决策（confirms 数组）；无显式决策时：
+                        //   - 自然语言拒绝 → allowed=false
+                        //   - 其他（含"继续"/"确认"或空消息）→ allowed=true
+                        boolean allowed = userDecisions.containsKey(info.getToolCallId())
+                                ? userDecisions.get(info.getToolCallId())
+                                : !naturalLanguageDeny;
                         log.info("[Chat] 权限确认决策: sessionId={}, toolCallId={}, toolName={}, allowed={}, input={}",
                                 sessionId, info.getToolCallId(), info.getToolName(), allowed,
                                 info.getInput() != null ? info.getInput() : "null");
 
-                        // 关键修复：使用官方文档推荐的方式 —— 传入 RequireUserConfirmEvent 中
-                        // 权限系统自动生成的 suggestedRules（已序列化存储到 Redis，此处恢复）。
-                        // 官方文档：new ConfirmResult(true, tc, tc.getSuggestedRules())
-                        // 建议规则由权限引擎基于本次调用自动生成，引擎知道如何匹配和放行后续相同调用。
-                        // 手动构造的 PermissionRule 无法被引擎正确匹配，导致恢复后二次调用仍触发 HITL。
+                        // AgentScope 2.0.0 的 ToolUseBlock 不存在 getSuggestedRules()，
+                        // 手动构造 ALLOW 规则注册到权限引擎，使后续相同工具调用自动放行
                         List<PermissionRule> rules = toPermissionRules(info.getSuggestedRules());
 
-                        // 安全兜底：如果 suggestedRules 为空（权限系统未生成建议规则），
-                        // 且用户确认允许，则手动构造一条 ALLOW 规则
+                        // 安全兜底：如果 suggestedRules 为空且用户确认允许，手动构造 ALLOW 规则
                         if (rules == null && allowed) {
                             rules = List.of(new PermissionRule(
                                     info.getToolName(),
