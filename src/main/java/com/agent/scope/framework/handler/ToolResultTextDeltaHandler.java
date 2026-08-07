@@ -24,10 +24,12 @@ public class ToolResultTextDeltaHandler implements AgentEventHandler<ToolResultT
     @Override
     public void handle(EventContext ctx, ToolResultTextDeltaEvent tr) throws Exception {
         if (tr.getToolCallId() != null && tr.getDelta() != null) {
-            StringBuilder result = ctx.getRecorder().toolCallResults.get(tr.getToolCallId());
-            if (result != null) {
-                result.append(tr.getDelta());
-            }
+            // 使用 computeIfAbsent 兜底：HITL 恢复路径中可能缺少 ToolCallStartEvent，
+            // 导致 toolCallResults map 中没有为该 toolCallId 初始化 StringBuilder。
+            // computeIfAbsent 确保无论如何都能创建并累积 delta。
+            ctx.getRecorder().toolCallResults
+                    .computeIfAbsent(tr.getToolCallId(), k -> new StringBuilder())
+                    .append(tr.getDelta());
         }
         ToolResultTextDeltaEventBO eventBO = ToolResultTextDeltaEventBO.builder()
                 .type(AgentEventEnum.TOOL_RESULT_TEXT_DELTA.getDesc())

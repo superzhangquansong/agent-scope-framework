@@ -82,12 +82,19 @@ public class PendingConfirmationService {
                         if (input == null || input.isEmpty()) {
                             input = resolveFallbackInput(tc, fallbackArguments);
                         }
+                        // 关键修复：ToolExecutor.executeCore() 使用 toolCall.getContent() 做参数校验，
+                        // 而非 toolCall.getInput()。若 content 为 null，校验报
+                        // "Schema validation error: argument 'content' is null"，工具执行失败。
+                        // 此处从 ToolUseBlock.getContent() 获取原始 JSON 字符串；
+                        // 若为 null（如 input 也是回退解析得到），则将 input 序列化为 JSON 作为 content。
+                        String content = resolveContent(tc, input, fallbackArguments);
                         // AgentScope 2.0.0 的 ToolUseBlock 不存在 getSuggestedRules() 方法
                         // （官方文档描述的 API 与 2.0.0 实际发布版本不一致），此处传 null
                         return ToolCallInfo.builder()
                                 .toolCallId(tc.getId())
                                 .toolName(tc.getName())
                                 .input(input)
+                                .content(content)
                                 .suggestedRules(null)
                                 .build();
                     })
@@ -143,6 +150,58 @@ public class PendingConfirmationService {
         } catch (Exception e) {
             log.warn("[PendingConfirm] 清除待确认权限请求失败: sessionId={}", sessionId, e);
         }
+    }
+
+    /**
+     * 解析工具入参的原始 JSON 字符串（content 字段）。
+     * <p>AgentScope 2.0 的 {@code ToolExecutor.executeCore()} 使用
+     * {@code toolCall.getContent()} 进行 JSON Schema 参数校验。
+     * 若 content 为 null，校验会抛出
+     * "Schema validation error: argument 'content' is null"，导致工具无法执行。</p>
+     *
+     * <p>解析优先级：</p>
+     * <ol>
+     *   <li>{@code tc.getContent()} —— LLM 生成工具调用时框架已设置的原始 JSON 字符串</li>
+     *   <li>将已解析的 {@code input} Map 序列化为 JSON 字符串作为回退</li>
+     *   <li>回退到 {@code fallbackArguments} 中累积的原始 JSON 片段</li>
+     *   <li>以上均不可用时返回 "{}"（空 JSON 对象）</li>
+     * </ol>
+     *
+     * @param tc                工具调用块
+     * @param input             已解析的入参 Map（可能来自 tc.getInput() 或 fallback）
+     * @param fallbackArguments recorder 累积的入参回退来源
+     * @return 工具入参的 JSON 字符串，永不为 null
+     */
+    private String resolveContent(ToolUseBlock tc, Map<String, Object> input,
+                                   Map<String, StringBuilder> fallbackArguments) {
+        // 优先使用 ToolUseBlock 自带的 content（LLM 生成时已设置）
+        String content = tc.getContent();
+        if (content != null && !content.isBlank()) {
+            return content;
+        }
+
+        // 回退1：将 input Map 序列化为 JSON
+        if (input != null && !input.isEmpty()) {
+            try {
+                return OBJECT_MAPPER.writeValueAsString(input);
+            } catch (Exception e) {
+                log.warn("[PendingConfirm] 序列化 input 为 content 失败: toolCallId={}, error={}",
+                        tc.getId(), e.getMessage());
+            }
+        }
+
+        // 回退2：从 fallbackArguments 获取原始 JSON 片段
+        if (fallbackArguments != null) {
+            StringBuilder argsBuilder = fallbackArguments.get(tc.getId());
+            if (argsBuilder != null && argsBuilder.length() > 0) {
+                return argsBuilder.toString();
+            }
+        }
+
+        // 兜底：空 JSON 对象（与 ToolCallsAccumulator.build() 的行为一致）
+        log.warn("[PendingConfirm] content 和 input 均不可用，使用空 JSON: toolCallId={}, toolName={}",
+                tc.getId(), tc.getName());
+        return "{}";
     }
 
     /**

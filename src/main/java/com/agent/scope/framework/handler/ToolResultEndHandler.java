@@ -5,6 +5,7 @@ import com.agent.scope.framework.enums.AgentEventEnum;
 import com.agent.scope.framework.service.ChatRecordService;
 import io.agentscope.core.event.ToolResultEndEvent;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 /**
@@ -15,6 +16,7 @@ import org.springframework.stereotype.Component;
  * @author zqs
  * @since 2.0.0
  */
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class ToolResultEndHandler implements AgentEventHandler<ToolResultEndEvent> {
@@ -59,6 +61,16 @@ public class ToolResultEndHandler implements AgentEventHandler<ToolResultEndEven
         String arguments = argsBuilder != null ? argsBuilder.toString() : null;
         String result = resultBuilder != null ? resultBuilder.toString() : null;
         long durationMs = startTime != null ? System.currentTimeMillis() - startTime : 0L;
+
+        // 调试日志：打印工具结果内容，用于排查 HITL 恢复后 LLM 误判工具失败的问题
+        // 如果 result 为 null 或空，说明 ToolResultTextDeltaHandler 未正确累积 delta
+        // （常见于 HITL 恢复路径中缺少 ToolCallStartEvent 导致 map 未初始化）
+        log.info("[Handler] 工具执行结束: sessionId={}, toolCallId={}, toolName={}, state={}, "
+                        + "argumentsLen={}, resultLen={}, resultPreview={}",
+                ctx.getSessionId(), toolCallId, tr.getToolCallName(), state,
+                arguments != null ? arguments.length() : 0,
+                result != null ? result.length() : 0,
+                result != null ? result.substring(0, Math.min(result.length(), 200)) : "<null>");
 
         chatRecordService.saveToolCall(ctx.getSessionId(), toolCallId, tr.getToolCallName(),
                 arguments, result, state, durationMs);

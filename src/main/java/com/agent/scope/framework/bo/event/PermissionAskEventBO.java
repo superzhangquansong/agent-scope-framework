@@ -65,6 +65,18 @@ public class PermissionAskEventBO implements Serializable {
         private Map<String, Object> input;
 
         /**
+         * 工具入参的原始 JSON 字符串（ToolUseBlock.content）。
+         * <p>AgentScope 2.0 的 {@code ToolExecutor.executeCore()} 调用
+         * {@code ToolValidator.validateInput(toolCall.getContent(), ...)} 进行参数校验，
+         * 使用的是 {@code content} 字段而非 {@code input} 字段。
+         * 若恢复时 ToolUseBlock 的 content 为 null，校验会报
+         * "Schema validation error: argument 'content' is null"，导致工具执行失败。</p>
+         * <p>此字段在缓存到 Redis 时从 {@code ToolUseBlock.getContent()} 获取，
+         * 恢复时用于重建 ToolUseBlock 的 content 字段。</p>
+         */
+        private String content;
+
+        /**
          * 权限系统自动生成的建议规则（来自 RequireUserConfirmEvent 中 ToolUseBlock.getSuggestedRules()）。
          * <p>官方文档明确要求：恢复执行时应使用 {@code tc.getSuggestedRules()} 而非手动构造 PermissionRule，
          * 因为建议规则由权限引擎基于本次调用自动生成，引擎知道如何匹配和放行后续相同调用。</p>

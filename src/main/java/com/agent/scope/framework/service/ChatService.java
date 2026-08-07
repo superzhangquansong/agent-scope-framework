@@ -339,7 +339,10 @@ public class ChatService {
                         "未找到待确认的权限请求: sessionId=" + sessionId);
             }
 
-            // 将前端确认决策（如有）与 Redis 中的完整数据合并
+            // 按官方文档实现：
+            //   confirmed 布尔值直接来自前端 confirms[].allowed，不做自然语言猜测
+            //   resumeMsg 只设 metadata（有备注时附加 textContent，兼容 AgentState 丢失走 addToContext 的场景）
+            //   官方文档：已拒绝的工具调用会产生 LLM 可见的错误结果，LLM 可能重试，这是模型行为
             Map<String, Boolean> userDecisions = new HashMap<>();
             List<PermissionConfirmDTO.ConfirmItem> items = dto.getConfirms();
             if (items != null) {
@@ -348,115 +351,37 @@ public class ChatService {
                 }
             }
 
-            // 当 confirms 数组为空时，通过 userMessage 自然语言检测用户意图
-            // 匹配 DENY_WORDS（取消/拒绝/不要等）→ allowed=false，其他一律 allowed=true
             String userMessage = dto.getUserMessage();
-            boolean naturalLanguageDeny = userMessage != null
-                    && DENY_WORDS.stream().anyMatch(userMessage::contains);
-            if (naturalLanguageDeny) {
-                log.info("[Chat] 自然语言检测到拒绝意图: sessionId={}, userMessage={}", sessionId, userMessage);
-            }
 
-            // 构建 ConfirmResult 列表：使用 Redis 中的完整 ToolCallInfo（含 input）
+            // 构建 ConfirmResult 列表（官方示例：new ConfirmResult(confirmed, toolCall, rules)）
+            // content 字段必须设置，否则 ToolValidator 校验报 "argument 'content' is null"
             List<ConfirmResult> confirmResults = pendingInfos.stream()
                     .map(info -> {
                         ToolUseBlock toolUse = ToolUseBlock.builder()
                                 .id(info.getToolCallId())
                                 .name(info.getToolName())
                                 .input(info.getInput())
+                                .content(resolveToolContent(info))
                                 .build();
-                        boolean allowed = userDecisions.containsKey(info.getToolCallId())
-                                ? userDecisions.get(info.getToolCallId())
-                                : !naturalLanguageDeny;
-                        log.info("[Chat] 权限确认决策: sessionId={}, toolCallId={}, toolName={}, allowed={}, input={}",
-                                sessionId, info.getToolCallId(), info.getToolName(), allowed,
-                                info.getInput() != null ? info.getInput() : "null");
-
-                        // 不添加 ALLOW 规则：PermissionContextState 是单例 Bean，ALLOW 规则会跨会话持久化，
-                        // 导致后续相同工具调用不再触发 HITL。每次设备控制都应触发权限确认。
+                        boolean allowed = userDecisions.getOrDefault(info.getToolCallId(), true);
+                        log.info("[Chat] 权限确认决策: sessionId={}, toolCallId={}, toolName={}, allowed={}",
+                                sessionId, info.getToolCallId(), info.getToolName(), allowed);
                         return new ConfirmResult(allowed, toolUse, null);
                     })
                     .toList();
 
-            // 清除 Redis 中的待确认缓存
             pendingConfirmationService.clearPendingConfirmations(sessionId);
 
-            // 检查是否全部拒绝：如果用户拒绝了所有工具调用，直接返回取消消息，不恢复 Agent 执行
-            // 通过遍历 pendingInfos 和 userDecisions/naturalLanguageDeny 来判断，避免访问 ConfirmResult 内部
-            boolean allDenied = pendingInfos.stream().allMatch(info -> {
-                boolean allowed = userDecisions.containsKey(info.getToolCallId())
-                        ? userDecisions.get(info.getToolCallId())
-                        : !naturalLanguageDeny;
-                return !allowed;
-            });
-            if (allDenied) {
-                log.info("[Chat] 用户拒绝了全部工具调用，直接返回取消消息: sessionId={}", sessionId);
-
-                String cancelReply = "好的，已取消执行该操作。如果您需要其他帮助，请随时告诉我。";
-
-                // 直接通过 SSE 返回取消回复，不恢复 Agent 执行（避免 LLM 重新发起工具调用询问）
-                sendEvent(emitter, SSE_EVENT_AGENT_START, sessionId, Map.of());
-                sendEvent(emitter, SSE_EVENT_AGENT_END, sessionId, Map.of(
-                        "cancelled", true,
-                        BusinessConst.RESPONSE_KEY_MESSAGE, cancelReply));
-
-                // 保存用户取消消息和 Agent 取消回复到对话记录
-                chatRecordService.saveUserMessage(sessionId, userId, houseId,
-                        userMessage != null ? userMessage : "取消");
-                chatRecordService.saveAssistantMessage(sessionId, userId, cancelReply);
-
-                sendDone(emitter);
-                emitter.complete();
-                return;
+            // 官方 resumeMsg 只设 metadata；有备注时附加 textContent
+            UserMessage.Builder resumeBuilder = UserMessage.builder()
+                    .metadata(Map.of(Msg.METADATA_CONFIRM_RESULTS, confirmResults));
+            if (userMessage != null && !userMessage.isBlank()) {
+                resumeBuilder.textContent(userMessage);
             }
+            Msg resumeMsg = resumeBuilder.build();
 
-            // 部分拒绝场景：在 resumeMsg 中添加文本说明，让 LLM 知道哪些工具被拒绝了
-            // 避免 LLM 恢复后看到之前的工具调用上下文但不知道用户已拒绝，重新发起询问
-            StringBuilder textContent = new StringBuilder();
-            List<ToolCallInfo> deniedInfos = pendingInfos.stream()
-                    .filter(info -> {
-                        boolean allowed = userDecisions.containsKey(info.getToolCallId())
-                                ? userDecisions.get(info.getToolCallId())
-                                : !naturalLanguageDeny;
-                        return !allowed;
-                    })
-                    .toList();
-            if (!deniedInfos.isEmpty()) {
-                textContent.append("用户已拒绝以下工具调用，请不要再询问是否执行，直接告知用户已取消：\n");
-                for (ToolCallInfo denied : deniedInfos) {
-                    textContent.append("- 工具 ").append(denied.getToolName())
-                            .append("（调用ID: ").append(denied.getToolCallId()).append("）已被用户拒绝\n");
-                }
-                textContent.append("对于用户同意的工具调用，请继续执行。");
-            }
-
-            // 用户确认场景：在 resumeMsg 中添加文本说明，告诉 LLM 工具已被用户授权执行
-            // 避免 LLM 误判工具返回结果后重试调用（重试会再次触发 HITL，形成循环）
-            List<ToolCallInfo> allowedInfos = pendingInfos.stream()
-                    .filter(info -> {
-                        boolean allowed = userDecisions.containsKey(info.getToolCallId())
-                                ? userDecisions.get(info.getToolCallId())
-                                : !naturalLanguageDeny;
-                        return allowed;
-                    })
-                    .toList();
-            if (!allowedInfos.isEmpty() && deniedInfos.isEmpty()) {
-                textContent.append("用户已确认同意执行以下工具调用，请直接执行，不要重复调用已执行成功的工具：\n");
-                for (ToolCallInfo allowed : allowedInfos) {
-                    textContent.append("- 工具 ").append(allowed.getToolName())
-                            .append("（调用ID: ").append(allowed.getToolCallId()).append("）已被用户授权\n");
-                }
-                textContent.append("工具执行成功后，请直接告知用户执行结果，不要重复调用。");
-            }
-
-            // 构建携带确认结果的用户消息（metadata 传 ConfirmResult + textContent 传拒绝说明）
-            Msg resumeMsg = UserMessage.builder()
-                    .textContent(textContent.length() > 0 ? textContent.toString() : null)
-                    .metadata(Map.of(Msg.METADATA_CONFIRM_RESULTS, confirmResults))
-                    .build();
-
-            log.info("[Chat] 发送权限确认恢复消息: sessionId={}, confirmCount={}, deniedCount={}",
-                    sessionId, confirmResults.size(), deniedInfos.size());
+            log.info("[Chat] 发送权限确认恢复消息: sessionId={}, confirmCount={}",
+                    sessionId, confirmResults.size());
 
             sendEvent(emitter, SSE_EVENT_AGENT_START, sessionId, Map.of());
 
@@ -786,6 +711,45 @@ public class ChatService {
     // ==================== Agent 消息构建（含 HITL 权限确认处理）====================
 
     /**
+     * 解析 ToolCallInfo 的 content 字段（工具入参的原始 JSON 字符串）。
+     * <p>AgentScope 2.0 的 {@code ToolExecutor.executeCore()} 使用
+     * {@code toolCall.getContent()} 而非 {@code toolCall.getInput()} 进行参数校验。
+     * 若 content 为 null，校验报 "Schema validation error: argument 'content' is null"。</p>
+     *
+     * <p>解析优先级：</p>
+     * <ol>
+     *   <li>{@code info.getContent()} —— 从 Redis 加载的原始 JSON（PendingConfirmationService 已缓存）</li>
+     *   <li>将 {@code info.getInput()} 序列化为 JSON 作为回退</li>
+     *   <li>兜底返回 "{}"</li>
+     * </ol>
+     *
+     * @param info Redis 中缓存的工具调用信息
+     * @return 工具入参的 JSON 字符串，永不为 null
+     */
+    private String resolveToolContent(ToolCallInfo info) {
+        // 优先使用 Redis 中缓存的 content（由 PendingConfirmationService 从 ToolUseBlock.getContent() 保存）
+        if (info.getContent() != null && !info.getContent().isBlank()) {
+            return info.getContent();
+        }
+
+        // 回退：将 input Map 序列化为 JSON
+        Map<String, Object> input = info.getInput();
+        if (input != null && !input.isEmpty()) {
+            try {
+                return OBJECT_MAPPER.writeValueAsString(input);
+            } catch (Exception e) {
+                log.warn("[Chat] 序列化 input 为 content 失败: toolCallId={}, error={}",
+                        info.getToolCallId(), e.getMessage());
+            }
+        }
+
+        // 兜底：空 JSON 对象（与 ToolCallsAccumulator.build() 行为一致）
+        log.warn("[Chat] content 和 input 均不可用，使用空 JSON: toolCallId={}, toolName={}",
+                info.getToolCallId(), info.getToolName());
+        return "{}";
+    }
+
+    /**
      * 构建 Agent 消息，自动处理待确认的权限请求（HITL）。
      *
      * <p>当上一轮 Agent 执行因敏感工具调用被权限系统拦截（ASKING 状态）时，
@@ -808,11 +772,9 @@ public class ChatService {
             return buildUserMessage(dto);
         }
 
-        String userMessage = dto.getUserMessage();
-        boolean isDeny = DENY_WORDS.stream().anyMatch(userMessage::contains);
-        boolean allowed = !isDeny;
-        log.info("[Chat] 检测到待确认权限请求，自动处理: sessionId={}, userMessage={}, allowed={}",
-                sessionId, userMessage, allowed);
+        // 按官方文档实现：用户通过 /api/chat/stream 恢复时默认确认（allowed=true）
+        // resumeMsg 只设 metadata，有 userMessage 时附加 textContent
+        log.info("[Chat] 检测到待确认权限请求，按确认恢复: sessionId={}", sessionId);
 
         List<ConfirmResult> confirmResults = pendingTools.stream()
                 .map(info -> {
@@ -820,22 +782,21 @@ public class ChatService {
                             .id(info.getToolCallId())
                             .name(info.getToolName())
                             .input(info.getInput())
+                            .content(resolveToolContent(info))
                             .build();
-                    log.info("[Chat] 自然语言恢复确认: sessionId={}, toolCallId={}, toolName={}, allowed={}",
-                            sessionId, info.getToolCallId(), info.getToolName(), allowed);
-
-                    // 不添加 ALLOW 规则：PermissionContextState 是单例 Bean，ALLOW 规则会跨会话持久化，
-                    // 导致后续相同工具调用不再触发 HITL。每次设备控制都应触发权限确认。
-                    return new ConfirmResult(allowed, toolUse, null);
+                    return new ConfirmResult(true, toolUse, null);
                 })
                 .toList();
 
         pendingConfirmationService.clearPendingConfirmations(sessionId);
 
-        return UserMessage.builder()
-                .textContent(userMessage)
-                .metadata(Map.of(Msg.METADATA_CONFIRM_RESULTS, confirmResults))
-                .build();
+        UserMessage.Builder builder = UserMessage.builder()
+                .metadata(Map.of(Msg.METADATA_CONFIRM_RESULTS, confirmResults));
+        String userMessage = dto.getUserMessage();
+        if (userMessage != null && !userMessage.isBlank()) {
+            builder.textContent(userMessage);
+        }
+        return builder.build();
     }
 
     private Msg buildUserMessage(ChatStreamDTO dto) {

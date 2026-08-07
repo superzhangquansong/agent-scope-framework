@@ -1,7 +1,5 @@
 package com.agent.scope.framework.constant;
 
-import java.util.Set;
-
 /**
  * 业务常量接口。
  * <p>
@@ -88,11 +86,6 @@ public interface BusinessConst {
     long PENDING_CONFIRM_TTL_MINUTES = 30L;
     /** AgentScope ASKING 状态错误消息关键字（用于检测残留 HITL 状态） */
     String ASKING_ERROR_KEYWORD = "paused for human-in-the-loop confirmation";
-
-    /** 用户拒绝意图关键词（匹配到则视为拒绝执行敏感工具调用） */
-    Set<String> DENY_WORDS = Set.of(
-            "取消", "拒绝", "不要", "否", "不", "不行", "停止", "no", "cancel", "别"
-    );
 
     // ==================== 限流常量 ====================
 
