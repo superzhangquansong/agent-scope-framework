@@ -43,7 +43,7 @@ public class DeviceTool extends AbstractTool {
             readOnly = true)
     public ToolResultVO queryDeviceList(RuntimeContext runtimeContext) {
         SessionContext sessionContext = resolveSessionContext(runtimeContext);
-        log.info("[DeviceTool] 查询设备列表（全部）: sessionContext={}", JSONObject.toJSONString(sessionContext));
+        log.info("[DeviceTool] 查询设备列表: userId={}, houseId={}, sessionId={}", sessionContext.getUserId(), sessionContext.getHouseId(), sessionContext.getSessionId());
         ToolResultVO toolResultVO = new ToolResultVO();
         toolResultVO.setSuccess(true);
         toolResultVO.setMessage(BusinessConst.MSG_QUERY_DEVICE_SUCCESS);
@@ -76,7 +76,7 @@ public class DeviceTool extends AbstractTool {
     ) {
 
         SessionContext sessionContext = resolveSessionContext(runtimeContext);
-        log.info("[DeviceTool] 查询设备详情: sessionContext={}", JSONObject.toJSONString(sessionContext));
+        log.info("[DeviceTool] 查询设备详情: userId={}, houseId={}, sessionId={}", sessionContext.getUserId(), sessionContext.getHouseId(), sessionContext.getSessionId());
         ToolResultVO toolResultVO = new ToolResultVO();
         toolResultVO.setSuccess(true);
         toolResultVO.setMessage(BusinessConst.MSG_QUERY_DEVICE_SUCCESS);
@@ -123,7 +123,7 @@ public class DeviceTool extends AbstractTool {
                     description = "设备动作JSON数组字符串，格式：[{\"deviceId\":\"<query_device_list返回的deviceId>\",\"gatewayId\":\"<query_device_list返回的gatewayId>\",\"spk\":\"<query_device_list返回的spk>\",\"userInput\":\"用户对该设备的控制描述\"}]。deviceId/gatewayId/spk必须来自query_device_list返回结果，禁止编造或使用任何示例值") String actionsJson,
             RuntimeContext runtimeContext) {
         SessionContext sessionContext = resolveSessionContext(runtimeContext);
-        log.info("[DeviceTool] 批量控制设备: actionsJson={}, sessionContext={}", actionsJson, JSONObject.toJSONString(sessionContext));
+        log.info("[DeviceTool] 批量控制设备: actionsJson={}, userId={}, houseId={}, sessionId={}", actionsJson, sessionContext.getUserId(), sessionContext.getHouseId(), sessionContext.getSessionId());
 
         ToolResultVO toolResultVO = new ToolResultVO();
         toolResultVO.setSuccess(true);

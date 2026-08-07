@@ -19,8 +19,11 @@ server:
     accept-count: 100
     max-connections: 10000
     connection-timeout: 30000
+  shutdown: graceful
 
 spring:
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
   # 文件上传限制（支持大 PDF/Word 文档上传）
   servlet:
     multipart:
@@ -32,7 +35,7 @@ spring:
   datasource:
     url: jdbc:mysql://127.0.0.1:30100/agent_scope_framework?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
     username: root
-    password: Hdl@1985..
+    password: ${MYSQL_PASSWORD:Hdl@1985..}
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
       maximum-pool-size: 20
@@ -46,7 +49,7 @@ spring:
     redis:
       host: 127.0.0.1
       port: 30101
-      password: hdl778899
+      password: ${REDIS_PASSWORD:hdl778899}
       database: 5
       timeout: 5000ms
       lettuce:
@@ -72,8 +75,6 @@ scope:
     vision-model-name: qwen-vl-max
     # 降级兜底模型名称
     fallback-model-name: qwen-turbo
-    # 是否启用降级兜底
-    fallback-enabled: true
     # Agent 最大迭代次数
     max-iters: 10
     # 上下文压缩阈值（消息条数）
@@ -87,13 +88,13 @@ scope:
     # 模型调用重试次数
     max-retries: 2
     # 是否启用备用模型回退
-    fallback-model-enabled: false
+    fallback-model-enabled: true
     # HarnessAgent 名称
     harness-agent-name: scope-harness
 
     # DashScope（通义千问）模型配置
     dashscope:
-      api-key: sk-2f8c9cb9fa9f4a78a2e7133b391ca6a2
+      api-key: ${DASHSCOPE_API_KEY:sk-2f8c9cb9fa9f4a78a2e7133b391ca6a2}
       base-url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
       stream: true
       enable-thinking: false
@@ -114,7 +115,7 @@ scope:
     hdl-api:
       base-url: https://gateway.hdlcontrol.com
       app-key: EISTBZLX
-      app-secret: EISTBZMNEISTBZND
+      app-secret: ${HDL_APP_SECRET:EISTBZMNEISTBZND}
       connect-timeout-ms: 8000
       read-timeout-ms: 15000
       auth-error-codes: 401,10001,40001,403,4010,4011,10002,20001,4013
@@ -126,26 +127,29 @@ scope:
       grpc-port: 30107
       collection-name: scope_knowledge
       vector-size: 1536
+      hnsw-m: 16
+      hnsw-ef-construct: 100
+      hnsw-ef-search: 64
 
     # MinIO 对象存储配置
     minio:
       endpoint: http://127.0.0.1:30102
-      access-key: hdl-minio-user
-      secret-key: hdl-minio-pass
+      access-key: ${MINIO_ACCESS_KEY:hdl-minio-user}
+      secret-key: ${MINIO_SECRET_KEY:hdl-minio-pass}
       bucket: ai-scope-workspace
 
     # Embedding 配置
     embedding:
       provider: dashscope
       model: text-embedding-v2
-      api-key: sk-2f8c9cb9fa9f4a78a2e7133b391ca6a2
+      api-key: ${DASHSCOPE_API_KEY:sk-2f8c9cb9fa9f4a78a2e7133b391ca6a2}
       endpoint: https://dashscope.aliyuncs.com/api/v1/services/embeddings/text-embedding/text-embedding
       vector-size: 1536
 
     # 测试账号配置
     test-account:
       login-name: 19210818109
-      login-pwd: "123456"
+      login-pwd: "${TEST_ACCOUNT_PWD:123456}"
 
     # ===================================================================
     # AgentScope 2.0 GA 企业级特性配置（48 项特性）
@@ -184,6 +188,7 @@ scope:
         2. 用户意图由你自主理解，不需要用户使用固定格式表达
         3. 多意图指令需拆分并行处理（如"开灯并查设备"→ 调用多个工具）
         4. 工具调用失败时向用户说明原因，不编造成功结果
+        5. 当用户要求控制设备时，必须直接调用 batch_control_device 工具执行控制操作，禁止在回复中询问用户"是否执行"或"是否确认"。系统会自动通过 HITL（人机交互）权限确认机制向用户征求同意，不需要你代替系统询问。
 
         【可用工具清单】
         - query_device_list: 查询当前房屋所有设备列表
@@ -255,10 +260,10 @@ scope:
       sandbox-enabled: true
       sandbox-snapshot-type: local
       subagent-enabled: true
-      channel-enabled: false
+      channel-enabled: true
       a2a-enabled: false
-      mcp-enabled: false
-      agent-as-tool-enabled: false
+      mcp-enabled: true
+      agent-as-tool-enabled: true
       ag-ui-enabled: false
       scheduler-enabled: false
       studio-enabled: false
@@ -351,3 +356,24 @@ logging:
     io.agentscope: INFO
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{traceId}] %-5level %logger{36} - %msg%n"
+
+# ===================================================================
+# Spring Security 配置
+# ===================================================================
+spring.security:
+  # API Key 认证配置（通过 Header 传递 X-API-Key）
+  api-key:
+    enabled: ${SECURITY_API_KEY_ENABLED:true}
+    header-name: X-API-Key
+    key: ${SECURITY_API_KEY:scope-framework-secret-key-2026}
+
+# ===================================================================
+# Springdoc OpenAPI 配置
+# ===================================================================
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+  packages-to-scan: com.agent.scope.framework.controller

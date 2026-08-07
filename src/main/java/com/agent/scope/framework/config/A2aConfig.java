@@ -13,6 +13,7 @@ import io.agentscope.core.tool.Toolkit;
 import io.agentscope.extensions.model.dashscope.DashScopeChatModel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -55,6 +56,7 @@ import java.util.List;
 @Slf4j
 @Configuration
 @RequiredArgsConstructor
+@ConditionalOnClass(name = "io.a2a.spec.AgentProvider")
 @ConditionalOnProperty(prefix = "scope.agentscope.advanced", name = "a2a-enabled", havingValue = "true")
 public class A2aConfig {
 

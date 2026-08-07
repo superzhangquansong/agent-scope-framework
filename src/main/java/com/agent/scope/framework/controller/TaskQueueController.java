@@ -4,6 +4,7 @@ import com.agent.scope.framework.config.TaskQueueConfig.TaskQueueManager;
 import com.agent.scope.framework.constant.BusinessConst;
 import com.agent.scope.framework.exception.BusinessException;
 import com.agent.scope.framework.exception.ErrorCode;
+import com.agent.scope.framework.vo.Response;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -32,7 +33,7 @@ import java.util.Map;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/task")
+@RequestMapping("/api/v1/task")
 @RequiredArgsConstructor
 @ConditionalOnProperty(prefix = "scope.agentscope.advanced", name = "task-queue-enabled", havingValue = "true")
 public class TaskQueueController {
@@ -56,7 +57,7 @@ public class TaskQueueController {
      * @return 任务 ID
      */
     @PostMapping("/submit")
-    public Map<String, Object> submit(@RequestBody SubmitRequest request) {
+    public Response<Map<String, Object>> submit(@RequestBody SubmitRequest request) {
         log.info("[TaskQueue] 提交任务: taskType={}", request.taskType());
         if (request.taskType() == null || request.taskType().isBlank()
                 || request.payload() == null || request.payload().isBlank()) {
@@ -66,7 +67,7 @@ public class TaskQueueController {
         Map<String, Object> data = new HashMap<>(2);
         data.put("taskId", taskId);
         data.put("taskType", request.taskType());
-        return buildSuccessResponse(data, BusinessConst.MSG_TASK_SUBMIT_SUCCESS);
+        return Response.success(data);
     }
 
     /**
@@ -76,7 +77,7 @@ public class TaskQueueController {
      * @return 任务状态
      */
     @GetMapping("/{taskId}/status")
-    public Map<String, Object> status(@PathVariable String taskId) {
+    public Response<Map<String, Object>> status(@PathVariable String taskId) {
         log.info("[TaskQueue] 查询任务状态: taskId={}", taskId);
         String status = taskQueueManager.getTaskStatus(taskId);
         if (BusinessConst.TASK_STATUS_UNKNOWN.equals(status)) {
@@ -85,7 +86,7 @@ public class TaskQueueController {
         Map<String, Object> data = new HashMap<>(2);
         data.put("taskId", taskId);
         data.put("status", status);
-        return buildSuccessResponse(data, BusinessConst.MSG_TASK_STATUS_SUCCESS);
+        return Response.success(data);
     }
 
     /**
@@ -96,7 +97,7 @@ public class TaskQueueController {
      * @return 任务结果
      */
     @GetMapping("/{taskId}/result")
-    public Map<String, Object> result(@PathVariable String taskId) {
+    public Response<Map<String, Object>> result(@PathVariable String taskId) {
         log.info("[TaskQueue] 获取任务结果: taskId={}", taskId);
         String status = taskQueueManager.getTaskStatus(taskId);
         if (BusinessConst.TASK_STATUS_UNKNOWN.equals(status)) {
@@ -114,17 +115,6 @@ public class TaskQueueController {
         Map<String, Object> data = new HashMap<>(2);
         data.put("taskId", taskId);
         data.put("result", result);
-        return buildSuccessResponse(data, BusinessConst.MSG_TASK_RESULT_SUCCESS);
-    }
-
-    /**
-     * 构建统一成功响应。
-     */
-    private Map<String, Object> buildSuccessResponse(Object data, String message) {
-        Map<String, Object> response = new HashMap<>(4);
-        response.put(BusinessConst.RESPONSE_KEY_CODE, BusinessConst.HTTP_OK);
-        response.put(BusinessConst.RESPONSE_KEY_DATA, data);
-        response.put(BusinessConst.RESPONSE_KEY_MESSAGE, message);
-        return response;
+        return Response.success(data);
     }
 }

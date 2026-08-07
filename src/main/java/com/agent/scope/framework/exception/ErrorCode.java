@@ -47,6 +47,7 @@ public enum ErrorCode {
 
     // ==================== 限流模块（RATE_5xx）====================
     RATE_LIMIT_EXCEEDED("RATE_001", "请求被限流，请稍后重试", 429),
+    RATE_LIMITED("RATE_002", "请求被限流，并发数已达上限", 429),
 
     // ==================== 配置模块（CONFIG_6xx）====================
     CONFIG_LOAD_FAILED("CONFIG_001", "配置加载失败", 500),

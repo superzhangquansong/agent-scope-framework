@@ -1,7 +1,8 @@
 package com.agent.scope.framework.controller;
 
+import com.agent.scope.framework.annotation.Auditable;
 import com.agent.scope.framework.config.ConfigVersionConfig.ConfigVersionManager;
-import com.agent.scope.framework.constant.BusinessConst;
+import com.agent.scope.framework.vo.Response;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -37,7 +38,7 @@ import java.util.Map;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/config/version")
+@RequestMapping("/api/v1/config/version")
 @RequiredArgsConstructor
 @ConditionalOnProperty(prefix = "scope.agentscope.config-version", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class ConfigVersionController {
@@ -55,7 +56,7 @@ public class ConfigVersionController {
      * @return 历史版本列表 JSON
      */
     @GetMapping("/history")
-    public Map<String, Object> queryHistory(
+    public Response<Object> queryHistory(
             @RequestParam(defaultValue = "1") int pageNo,
             @RequestParam(defaultValue = "10") int pageSize) {
         log.info("[ConfigVersion] 查询历史版本: pageNo={}, pageSize={}", pageNo, pageSize);
@@ -70,7 +71,7 @@ public class ConfigVersionController {
      * @return 版本详情 JSON
      */
     @GetMapping("/{nid}")
-    public Map<String, Object> getVersion(@PathVariable String nid) {
+    public Response<Object> getVersion(@PathVariable String nid) {
         log.info("[ConfigVersion] 获取版本详情: nid={}", nid);
         String result = configVersionManager.getVersion(nid);
         return buildResponse(result);
@@ -83,7 +84,8 @@ public class ConfigVersionController {
      * @return 回滚结果 JSON
      */
     @PostMapping("/{nid}/rollback")
-    public Map<String, Object> rollback(@PathVariable String nid) {
+    @Auditable(action = "CONFIG_ROLLBACK", target = "配置版本回滚")
+    public Response<Object> rollback(@PathVariable String nid) {
         log.info("[ConfigVersion] 回滚配置版本: nid={}", nid);
         String result = configVersionManager.rollback(nid);
         return buildResponse(result);
@@ -95,15 +97,12 @@ public class ConfigVersionController {
      * @return 环境信息
      */
     @GetMapping("/environment")
-    public Map<String, Object> getEnvironmentInfo() {
+    public Response<Map<String, Object>> getEnvironmentInfo() {
         log.info("[ConfigVersion] 获取环境信息");
         String envInfo = configVersionManager.getEnvironmentInfo();
         Map<String, Object> data = new HashMap<>(2);
         data.put("environment", envInfo);
-        Map<String, Object> response = new HashMap<>(4);
-        response.put(BusinessConst.RESPONSE_KEY_CODE, BusinessConst.HTTP_OK);
-        response.put(BusinessConst.RESPONSE_KEY_DATA, data);
-        return response;
+        return Response.success(data);
     }
 
     /**
@@ -114,19 +113,16 @@ public class ConfigVersionController {
      * </p>
      *
      * @param nacosResponse Nacos 返回的 JSON 字符串
-     * @return 统一响应 Map
+     * @return 统一响应
      */
-    private Map<String, Object> buildResponse(String nacosResponse) {
-        Map<String, Object> response = new HashMap<>(4);
-        response.put(BusinessConst.RESPONSE_KEY_CODE, BusinessConst.HTTP_OK);
+    private Response<Object> buildResponse(String nacosResponse) {
         try {
             Object parsed = OBJECT_MAPPER.readValue(nacosResponse, Object.class);
-            response.put(BusinessConst.RESPONSE_KEY_DATA, parsed);
+            return Response.success(parsed);
         } catch (Exception e) {
             // JSON 解析失败时返回原始字符串
             log.warn("[ConfigVersion] Nacos 响应 JSON 解析失败，返回原始字符串: {}", e.getMessage());
-            response.put(BusinessConst.RESPONSE_KEY_DATA, nacosResponse);
+            return Response.success(nacosResponse);
         }
-        return response;
     }
 }

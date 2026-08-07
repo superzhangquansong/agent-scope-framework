@@ -4,6 +4,7 @@ import com.agent.scope.framework.config.properties.AgentScopeProperties;
 import com.agent.scope.framework.constant.BusinessConst;
 import com.agent.scope.framework.exception.BusinessException;
 import com.agent.scope.framework.exception.ErrorCode;
+import com.agent.scope.framework.vo.Response;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
 import io.agentscope.extensions.scheduler.AgentScheduler;
@@ -41,7 +42,7 @@ import java.util.Map;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/scheduler")
+@RequestMapping("/api/v1/scheduler")
 @RequiredArgsConstructor
 @ConditionalOnProperty(prefix = "scope.agentscope.advanced", name = "scheduler-enabled", havingValue = "true")
 public class SchedulerController {
@@ -83,7 +84,7 @@ public class SchedulerController {
      * @return 注册结果（taskId、name）
      */
     @PostMapping("/schedule")
-    public Map<String, Object> schedule(@RequestBody ScheduleRequest request) {
+    public Response<Map<String, Object>> schedule(@RequestBody ScheduleRequest request) {
         log.info("[Scheduler] 注册调度任务: name={}, cron={}, fixedRate={}, fixedDelay={}",
                 request.name(), request.cron(), request.fixedRate(), request.fixedDelay());
 
@@ -112,7 +113,7 @@ public class SchedulerController {
             Map<String, Object> data = new HashMap<>(4);
             data.put("taskId", task.getId());
             data.put("name", task.getName());
-            return buildSuccessResponse(data, BusinessConst.MSG_SCHEDULER_SCHEDULE_SUCCESS);
+            return Response.success(data);
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
@@ -128,7 +129,7 @@ public class SchedulerController {
      * @return 任务列表（taskId、name、调度配置、执行次数、取消状态）
      */
     @GetMapping("/list")
-    public Map<String, Object> list() {
+    public Response<Map<String, Object>> list() {
         log.info("[Scheduler] 查询调度任务列表");
         List<ScheduleAgentTask> tasks = agentScheduler.getAllScheduleAgentTasks();
         List<Map<String, Object>> taskViews = tasks.stream()
@@ -137,7 +138,7 @@ public class SchedulerController {
         Map<String, Object> data = new HashMap<>(2);
         data.put("total", taskViews.size());
         data.put("tasks", taskViews);
-        return buildSuccessResponse(data, BusinessConst.MSG_SCHEDULER_LIST_SUCCESS);
+        return Response.success(data);
     }
 
     /**
@@ -147,7 +148,7 @@ public class SchedulerController {
      * @return 取消结果
      */
     @PostMapping("/{taskId}/cancel")
-    public Map<String, Object> cancel(@PathVariable String taskId) {
+    public Response<Map<String, Object>> cancel(@PathVariable String taskId) {
         log.info("[Scheduler] 取消调度任务: taskId={}", taskId);
         boolean cancelled = agentScheduler.cancel(taskId);
         if (!cancelled) {
@@ -157,7 +158,7 @@ public class SchedulerController {
         Map<String, Object> data = new HashMap<>(2);
         data.put("taskId", taskId);
         data.put("cancelled", true);
-        return buildSuccessResponse(data, BusinessConst.MSG_SCHEDULER_CANCEL_SUCCESS);
+        return Response.success(data);
     }
 
     /**
@@ -228,16 +229,5 @@ public class SchedulerController {
             }
         }
         return view;
-    }
-
-    /**
-     * 构建统一成功响应。
-     */
-    private Map<String, Object> buildSuccessResponse(Object data, String message) {
-        Map<String, Object> response = new HashMap<>(4);
-        response.put(BusinessConst.RESPONSE_KEY_CODE, BusinessConst.HTTP_OK);
-        response.put(BusinessConst.RESPONSE_KEY_DATA, data);
-        response.put(BusinessConst.RESPONSE_KEY_MESSAGE, message);
-        return response;
     }
 }

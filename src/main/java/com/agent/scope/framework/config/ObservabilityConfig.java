@@ -1,5 +1,6 @@
 package com.agent.scope.framework.config;
 
+import com.agent.scope.framework.config.properties.AgentScopeProperties;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -31,6 +32,8 @@ import org.springframework.context.annotation.Configuration;
 @ConditionalOnProperty(prefix = "scope.agentscope.observability", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class ObservabilityConfig {
 
+    private final AgentScopeProperties properties;
+
     /**
      * 模型调用次数计数器
      * <p>
@@ -46,6 +49,7 @@ public class ObservabilityConfig {
         Counter counter = Counter.builder("agent_model_call_total")
                 .description("模型调用总次数")
                 .tag("application", "agent-scope-framework")
+                .tag("model.name", properties.getModelName())
                 .register(meterRegistry);
         log.info("[ObservabilityConfig] 已注册 Prometheus 指标: agent_model_call_total");
         return counter;
@@ -86,6 +90,7 @@ public class ObservabilityConfig {
         Counter counter = Counter.builder("agent_tool_call_total")
                 .description("工具调用总次数")
                 .tag("application", "agent-scope-framework")
+                .tag("tool.name", "unknown")
                 .register(meterRegistry);
         log.info("[ObservabilityConfig] 已注册 Prometheus 指标: agent_tool_call_total");
         return counter;

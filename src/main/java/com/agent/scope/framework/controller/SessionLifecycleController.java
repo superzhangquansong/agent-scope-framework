@@ -1,9 +1,11 @@
 package com.agent.scope.framework.controller;
 
+import com.agent.scope.framework.annotation.Auditable;
 import com.agent.scope.framework.config.SessionLifecycleConfig.SessionLifecycleManager;
 import com.agent.scope.framework.constant.BusinessConst;
 import com.agent.scope.framework.exception.BusinessException;
 import com.agent.scope.framework.exception.ErrorCode;
+import com.agent.scope.framework.vo.Response;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -32,7 +34,7 @@ import java.util.Set;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/session")
+@RequestMapping("/api/v1/session")
 @RequiredArgsConstructor
 @ConditionalOnProperty(prefix = "scope.agentscope.session", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class SessionLifecycleController {
@@ -51,17 +53,18 @@ public class SessionLifecycleController {
      * @return 操作结果
      */
     @DeleteMapping("/{userId}/{sessionId}")
-    public Map<String, Object> destroySession(@PathVariable String userId,
+    @Auditable(action = "SESSION_DESTROY", target = "销毁会话")
+    public Response<Map<String, Object>> destroySession(@PathVariable String userId,
                                               @PathVariable String sessionId) {
         log.info("[SessionLifecycle] 销毁会话: userId={}, sessionId={}", userId, sessionId);
         try {
             sessionLifecycleManager.destroySession(userId, sessionId);
-            return Map.of(
+            return Response.success(Map.of(
                     BusinessConst.RESPONSE_KEY_CODE, BusinessConst.HTTP_OK,
                     BusinessConst.RESPONSE_KEY_MESSAGE, "会话已销毁",
                     "userId", userId,
                     "sessionId", sessionId
-            );
+            ));
         } catch (Exception e) {
             log.error("[SessionLifecycle] 销毁会话失败: userId={}, sessionId={}", userId, sessionId, e);
             throw new BusinessException(ErrorCode.SESSION_DESTROY_FAILED,
@@ -76,16 +79,16 @@ public class SessionLifecycleController {
      * @return 会话 ID 集合
      */
     @GetMapping("/{userId}/list")
-    public Map<String, Object> listSessions(@PathVariable String userId) {
+    public Response<Map<String, Object>> listSessions(@PathVariable String userId) {
         log.info("[SessionLifecycle] 列出会话: userId={}", userId);
         try {
             Set<String> sessionIds = sessionLifecycleManager.listSessions(userId);
-            return Map.of(
+            return Response.success(Map.of(
                     BusinessConst.RESPONSE_KEY_CODE, BusinessConst.HTTP_OK,
                     "userId", userId,
                     "sessionIds", sessionIds,
                     "count", sessionIds.size()
-            );
+            ));
         } catch (Exception e) {
             log.error("[SessionLifecycle] 列出会话失败: userId={}", userId, e);
             throw new BusinessException(ErrorCode.SESSION_LIST_FAILED,
@@ -101,17 +104,17 @@ public class SessionLifecycleController {
      * @return 存在性结果
      */
     @GetMapping("/{userId}/{sessionId}/exists")
-    public Map<String, Object> sessionExists(@PathVariable String userId,
+    public Response<Map<String, Object>> sessionExists(@PathVariable String userId,
                                              @PathVariable String sessionId) {
         log.info("[SessionLifecycle] 检查会话存在性: userId={}, sessionId={}", userId, sessionId);
         try {
             boolean exists = sessionLifecycleManager.sessionExists(userId, sessionId);
-            return Map.of(
+            return Response.success(Map.of(
                     BusinessConst.RESPONSE_KEY_CODE, BusinessConst.HTTP_OK,
                     "userId", userId,
                     "sessionId", sessionId,
                     "exists", exists
-            );
+            ));
         } catch (Exception e) {
             log.error("[SessionLifecycle] 检查会话存在性失败: userId={}, sessionId={}", userId, sessionId, e);
             throw new BusinessException(ErrorCode.SESSION_CHECK_FAILED,

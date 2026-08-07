@@ -1,6 +1,5 @@
 package com.agent.scope.framework.controller;
 
-import com.agent.scope.framework.constant.BusinessConst;
 import com.agent.scope.framework.entity.ChatMessageRecord;
 import com.agent.scope.framework.entity.ModelCallRecord;
 import com.agent.scope.framework.entity.TokenUsageRecord;
@@ -9,6 +8,7 @@ import com.agent.scope.framework.mapper.ChatMessageRecordMapper;
 import com.agent.scope.framework.mapper.ModelCallRecordMapper;
 import com.agent.scope.framework.mapper.TokenUsageRecordMapper;
 import com.agent.scope.framework.mapper.ToolCallRecordMapper;
+import com.agent.scope.framework.vo.Response;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -49,7 +49,7 @@ import java.util.Objects;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/studio")
+@RequestMapping("/api/v1/studio")
 @RequiredArgsConstructor
 @ConditionalOnProperty(prefix = "scope.agentscope.advanced", name = "studio-enabled", havingValue = "true")
 public class StudioController {
@@ -85,7 +85,7 @@ public class StudioController {
      * @return 包含状态码与消息列表的响应 Map
      */
     @GetMapping("/sessions/{sessionId}/messages")
-    public Map<String, Object> listMessages(@PathVariable String sessionId) {
+    public Response<List<ChatMessageRecord>> listMessages(@PathVariable String sessionId) {
         log.info("[Studio] 查询会话消息记录: sessionId={}", sessionId);
 
         LambdaQueryWrapper<ChatMessageRecord> wrapper = new LambdaQueryWrapper<ChatMessageRecord>()
@@ -94,10 +94,7 @@ public class StudioController {
                 .last("LIMIT 50");
         List<ChatMessageRecord> list = chatMessageRecordMapper.selectList(wrapper);
 
-        return Map.of(
-                BusinessConst.RESPONSE_KEY_CODE, BusinessConst.HTTP_OK,
-                BusinessConst.RESPONSE_KEY_DATA, list
-        );
+        return Response.success(list);
     }
 
     /**
@@ -111,7 +108,7 @@ public class StudioController {
      * @return 包含状态码与工具调用列表的响应 Map
      */
     @GetMapping("/sessions/{sessionId}/tool-calls")
-    public Map<String, Object> listToolCalls(@PathVariable String sessionId) {
+    public Response<List<ToolCallRecord>> listToolCalls(@PathVariable String sessionId) {
         log.info("[Studio] 查询会话工具调用记录: sessionId={}", sessionId);
 
         LambdaQueryWrapper<ToolCallRecord> wrapper = new LambdaQueryWrapper<ToolCallRecord>()
@@ -120,10 +117,7 @@ public class StudioController {
                 .last("LIMIT 50");
         List<ToolCallRecord> list = toolCallRecordMapper.selectList(wrapper);
 
-        return Map.of(
-                BusinessConst.RESPONSE_KEY_CODE, BusinessConst.HTTP_OK,
-                BusinessConst.RESPONSE_KEY_DATA, list
-        );
+        return Response.success(list);
     }
 
     /**
@@ -138,7 +132,7 @@ public class StudioController {
      * @return 包含状态码与模型调用列表的响应 Map
      */
     @GetMapping("/sessions/{sessionId}/model-calls")
-    public Map<String, Object> listModelCalls(@PathVariable String sessionId) {
+    public Response<List<ModelCallRecord>> listModelCalls(@PathVariable String sessionId) {
         log.info("[Studio] 查询会话模型调用记录: sessionId={}", sessionId);
 
         LambdaQueryWrapper<ModelCallRecord> wrapper = new LambdaQueryWrapper<ModelCallRecord>()
@@ -147,10 +141,7 @@ public class StudioController {
                 .last("LIMIT 50");
         List<ModelCallRecord> list = modelCallRecordMapper.selectList(wrapper);
 
-        return Map.of(
-                BusinessConst.RESPONSE_KEY_CODE, BusinessConst.HTTP_OK,
-                BusinessConst.RESPONSE_KEY_DATA, list
-        );
+        return Response.success(list);
     }
 
     /**
@@ -165,7 +156,7 @@ public class StudioController {
      * @return 包含状态码与 Token 消耗列表的响应 Map
      */
     @GetMapping("/sessions/{sessionId}/token-usage")
-    public Map<String, Object> listTokenUsage(@PathVariable String sessionId) {
+    public Response<List<TokenUsageRecord>> listTokenUsage(@PathVariable String sessionId) {
         log.info("[Studio] 查询会话 Token 消耗明细: sessionId={}", sessionId);
 
         LambdaQueryWrapper<TokenUsageRecord> wrapper = new LambdaQueryWrapper<TokenUsageRecord>()
@@ -174,10 +165,7 @@ public class StudioController {
                 .last("LIMIT 20");
         List<TokenUsageRecord> list = tokenUsageRecordMapper.selectList(wrapper);
 
-        return Map.of(
-                BusinessConst.RESPONSE_KEY_CODE, BusinessConst.HTTP_OK,
-                BusinessConst.RESPONSE_KEY_DATA, list
-        );
+        return Response.success(list);
     }
 
     /**
@@ -194,7 +182,7 @@ public class StudioController {
      * @return 包含状态码与 Token 汇总信息的响应 Map
      */
     @GetMapping("/token-summary")
-    public Map<String, Object> tokenSummary() {
+    public Response<Map<String, Object>> tokenSummary() {
         log.info("[Studio] 聚合统计全部会话 Token 消耗");
 
         List<TokenUsageRecord> records = tokenUsageRecordMapper.selectList(new LambdaQueryWrapper<>());
@@ -225,9 +213,6 @@ public class StudioController {
         summary.put("sessionCount", sessionCount);
         summary.put("recordCount", records.size());
 
-        Map<String, Object> result = new HashMap<>(4);
-        result.put(BusinessConst.RESPONSE_KEY_CODE, BusinessConst.HTTP_OK);
-        result.put(BusinessConst.RESPONSE_KEY_DATA, summary);
-        return result;
+        return Response.success(summary);
     }
 }

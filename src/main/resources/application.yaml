@@ -12,6 +12,9 @@ spring:
   application:
     name: agent-scope-framework
 
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
   cloud:
     compatibility-verifier:
       enabled: false

@@ -1,7 +1,10 @@
 package com.agent.scope.framework.controller;
 
+import com.agent.scope.framework.annotation.Auditable;
 import com.agent.scope.framework.dto.ChatStreamDTO;
 import com.agent.scope.framework.dto.PermissionConfirmDTO;
+import com.agent.scope.framework.exception.BusinessException;
+import com.agent.scope.framework.exception.ErrorCode;
 import com.agent.scope.framework.service.ChatService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -9,6 +12,8 @@ import org.springframework.http.MediaType;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import java.util.concurrent.Semaphore;
 
 import static com.agent.scope.framework.constant.BusinessConst.SSE_EMITTER_TIMEOUT;
 import static com.agent.scope.framework.utils.ChatUtils.extractAccessToken;
@@ -33,10 +38,16 @@ import static com.agent.scope.framework.utils.ChatUtils.extractAccessToken;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/chat")
+@RequestMapping("/api/v1/chat")
 @RequiredArgsConstructor
 @Validated
 public class ChatController {
+
+    /** SSE 并发连接数上限 */
+    private static final int MAX_CONCURRENT_SSE = 500;
+
+    /** SSE 并发连接信号量（限制同时活跃的 SSE 流数量） */
+    private static final Semaphore SSE_SEMAPHORE = new Semaphore(MAX_CONCURRENT_SSE);
 
     /**
      * 核心聊天服务
@@ -53,6 +64,10 @@ public class ChatController {
     public SseEmitter stream(@Validated @RequestBody ChatStreamDTO dto,
                              @RequestHeader(value = "Authorization", required = true) String authHeader
     ) {
+        if (!SSE_SEMAPHORE.tryAcquire()) {
+            throw new BusinessException(ErrorCode.RATE_LIMITED,
+                    "SSE并发连接数已达上限: " + MAX_CONCURRENT_SSE);
+        }
         log.info("[Chat] SSE 流连接: sessionId={}, userId={}, houseId={}", dto.getSessionId(), dto.getUserId(), dto.getHouseId());
 
         // 从 Authorization 头提取 accessToken
@@ -61,9 +76,19 @@ public class ChatController {
 
         // 创建 SSE Emitter，超时时间 5 分钟
         SseEmitter emitter = new SseEmitter(SSE_EMITTER_TIMEOUT);
+        // 通过 emitter 回调在流结束/超时/异常时释放信号量
+        emitter.onCompletion(SSE_SEMAPHORE::release);
+        emitter.onTimeout(SSE_SEMAPHORE::release);
+        emitter.onError(e -> SSE_SEMAPHORE.release());
 
-        // 调用聊天服务流式输出事件
-        chatService.streamEvents(dto, emitter);
+        try {
+            // 调用聊天服务流式输出事件
+            chatService.streamEvents(dto, emitter);
+        } catch (RuntimeException e) {
+            // 同步阶段失败时释放信号量（异步结束由 emitter 回调释放）
+            SSE_SEMAPHORE.release();
+            throw e;
+        }
 
         return emitter;
     }
@@ -79,10 +104,15 @@ public class ChatController {
      * @param authHeader Authorization 头
      * @return SSE 事件流（恢复执行后的后续事件）
      */
+    @Auditable(action = "PERMISSION_CONFIRM", target = "HITL权限确认")
     @PostMapping(value = "/confirm", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter confirm(@Validated @RequestBody PermissionConfirmDTO dto,
                               @RequestHeader(value = "Authorization", required = true) String authHeader
     ) {
+        if (!SSE_SEMAPHORE.tryAcquire()) {
+            throw new BusinessException(ErrorCode.RATE_LIMITED,
+                    "SSE并发连接数已达上限: " + MAX_CONCURRENT_SSE);
+        }
         log.info("[Chat] 权限确认: sessionId={}, userId={}, confirms={}",
                 dto.getSessionId(), dto.getUserId(),
                 dto.getConfirms() != null ? dto.getConfirms().size() : 0);
@@ -91,7 +121,18 @@ public class ChatController {
         dto.setAccessToken(accessToken);
 
         SseEmitter emitter = new SseEmitter(SSE_EMITTER_TIMEOUT);
-        chatService.confirmAndResume(dto, emitter);
+        // 通过 emitter 回调在流结束/超时/异常时释放信号量
+        emitter.onCompletion(SSE_SEMAPHORE::release);
+        emitter.onTimeout(SSE_SEMAPHORE::release);
+        emitter.onError(e -> SSE_SEMAPHORE.release());
+
+        try {
+            chatService.confirmAndResume(dto, emitter);
+        } catch (RuntimeException e) {
+            // 同步阶段失败时释放信号量（异步结束由 emitter 回调释放）
+            SSE_SEMAPHORE.release();
+            throw e;
+        }
 
         return emitter;
     }

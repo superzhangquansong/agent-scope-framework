@@ -11,6 +11,7 @@ import io.agentscope.harness.agent.gateway.channel.ChannelConfig;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -177,6 +178,7 @@ public class ChannelGatewayConfig {
      * @return 飞书渠道适配器实例
      */
     @Bean
+    @ConditionalOnExpression("'${scope.agentscope.channel.feishu.app-id:}' != ''")
     public FeishuChannel feishuChannel(ChannelConfig channelConfig,
                                        FeishuChannelRegistry feishuChannelRegistry) {
         try {

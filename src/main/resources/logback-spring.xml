@@ -24,11 +24,11 @@
 
     <!-- 控制台日志格式：时间 | 线程 | [traceId] | 级别 | 应用名:端口 | 类名.方法名(文件:行号) | 消息 -->
     <property name="CONSOLE_LOG_PATTERN"
-              value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%t] %highlight([%X{traceId:-}]) %highlight(%-5level) %magenta(${APP_NAME}:${SERVER_PORT}) | %cyan(%logger{36}.%M\(%F:%L\)) - %msg%n"/>
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%t] %highlight([%X{traceId:-},%X{spanId:-}]) %highlight(%-5level) %magenta(${APP_NAME}:${SERVER_PORT}) | %cyan(%logger{36}.%M\(%F:%L\)) - %msg%n"/>
 
     <!-- 文件日志格式（不含颜色转义码，便于 grep/ELK 采集） -->
     <property name="FILE_LOG_PATTERN"
-              value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%t] [%X{traceId:-}] %-5level ${APP_NAME}:${SERVER_PORT} | %logger{36}.%M\(%F:%L\) - %msg%n"/>
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%t] [%X{traceId:-},%X{spanId:-}] %-5level ${APP_NAME}:${SERVER_PORT} | %logger{36}.%M\(%F:%L\) - %msg%n"/>
 
     <!-- 日志文件存储路径 -->
     <property name="LOG_PATH" value="logs"/>
@@ -87,7 +87,7 @@
     <!-- ==================== 日志级别配置 ==================== -->
 
     <!-- 项目代码：DEBUG 级别便于排查问题（生产环境可调整为 INFO） -->
-    <logger name="com.scope.core" level="DEBUG" additivity="false">
+    <logger name="com.agent.scope.framework" level="DEBUG" additivity="false">
         <appender-ref ref="CONSOLE"/>
         <appender-ref ref="FILE"/>
         <appender-ref ref="ERROR_FILE"/>
@@ -110,7 +110,7 @@
     <logger name="org.apache.coyote" level="INFO"/>
 
     <!-- MyBatis SQL 日志（DEBUG 打印 SQL 语句和参数） -->
-    <logger name="com.scope.core.mapper" level="DEBUG"/>
+    <logger name="com.agent.scope.framework.mapper" level="DEBUG"/>
 
     <!-- HTTP 客户端日志 -->
     <logger name="org.apache.hc" level="INFO"/>

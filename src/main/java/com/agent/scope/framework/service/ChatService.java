@@ -21,11 +21,16 @@ import io.agentscope.core.event.AgentEndEvent;
 import io.agentscope.core.event.AgentEvent;
 import io.agentscope.core.event.ConfirmResult;
 import io.agentscope.core.message.*;
-import io.agentscope.core.permission.PermissionBehavior;
-import io.agentscope.core.permission.PermissionRule;
 import io.agentscope.harness.agent.HarnessAgent;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.connection.Message;
+import org.springframework.data.redis.connection.MessageListener;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.listener.ChannelTopic;
+import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import reactor.core.Disposable;
@@ -90,6 +95,13 @@ public class ChatService {
     private final AgentEventHandlerRegistry agentEventHandlerRegistry;
     private final PendingConfirmationService pendingConfirmationService;
     private final RedisRateLimiterService redisRateLimiterService;
+
+    /**
+     * StringRedisTemplate（可选注入，用于跨实例中断消息发布/订阅）。
+     * <p>Redis 不可用时为空，此时中断仅在本实例生效。</p>
+     */
+    private final Optional<StringRedisTemplate> stringRedisTemplateOpt;
+
     /**
      * 技能自动沉淀服务（特性33，条件装配）。
      * <p>启用 scope.agentscope.advanced.skill-promotion-enabled=true 时装配，
@@ -122,12 +134,49 @@ public class ChatService {
     /** 框架优雅中断超时时间（秒），超时后强制 dispose 订阅 */
     private static final long INTERRUPT_GRACE_TIMEOUT_SECONDS = 30;
 
+    /** Redis 发布/订阅频道：跨实例中断消息 */
+    private static final String INTERRUPT_CHANNEL = "agent:interrupt";
+
+    /** Redis 消息监听容器（@PostConstruct 中初始化，@PreDestroy 中销毁） */
+    private RedisMessageListenerContainer redisListenerContainer;
+
     /**
      * 中断指定会话的 Agent 执行。
+     * <p>
+     * <b>多实例中断机制（P1-7）</b>：本方法先在本地执行中断（关闭 SSE + 标记 + 超时兜底），
+     * 然后通过 Redis 发布/订阅将中断消息广播到 {@link #INTERRUPT_CHANNEL}。
+     * 其他实例收到消息后调用 {@link #interruptSessionLocal} 执行本地中断，
+     * 从而实现跨节点中断。activeSubscriptions / interruptedSessions 保持内存级
+     * （Reactor Subscription 不可序列化，无法跨节点共享），仅中断信号通过 Redis 传播。
+     * Redis 不可用时仅本实例中断生效。
+     * </p>
      * <p>
      * <b>关键设计</b>：立即关闭 SSE 连接（让用户看到即时响应），但<b>不立即 dispose 订阅</b>，
      * 给 AgentScope 框架时间在 ReAct 循环检查点检测中断信号并优雅保存 AgentState。
      * </p>
+     *
+     * @param sessionId 会话 ID
+     * @return true=成功中断，false=会话不存在或已结束
+     */
+    public boolean interruptSession(String sessionId) {
+        // 1. 本地中断（优雅中断 + 超时兜底，核心逻辑保持不变）
+        boolean interrupted = interruptSessionLocal(sessionId);
+
+        // 2. 通过 Redis 发布/订阅广播中断消息到其他实例（多实例部署时跨节点中断）
+        stringRedisTemplateOpt.ifPresent(redis -> {
+            try {
+                redis.convertAndSend(INTERRUPT_CHANNEL, sessionId);
+                log.info("[Chat] 已发布跨实例中断消息: sessionId={}, channel={}", sessionId, INTERRUPT_CHANNEL);
+            } catch (Exception e) {
+                log.warn("[Chat] 发布跨实例中断消息失败: sessionId={}, error={}", sessionId, e.getMessage());
+            }
+        });
+
+        return interrupted;
+    }
+
+    /**
+     * 本地中断逻辑（不发布 Redis 消息，供 {@link #interruptSession} 和 Redis 监听器调用）。
      * <p>
      * 中断流程：
      * <ol>
@@ -148,7 +197,7 @@ public class ChatService {
      * @param sessionId 会话 ID
      * @return true=成功中断，false=会话不存在或已结束
      */
-    public boolean interruptSession(String sessionId) {
+    private boolean interruptSessionLocal(String sessionId) {
         Disposable subscription = activeSubscriptions.remove(sessionId);
         SseEmitter emitter = activeEmitters.remove(sessionId);
 
@@ -193,6 +242,50 @@ public class ChatService {
 
         log.info("[Chat] 会话已中断: sessionId={}", sessionId);
         return true;
+    }
+
+    /**
+     * 初始化 Redis 跨实例中断监听器（P1-7）。
+     * <p>订阅 {@link #INTERRUPT_CHANNEL}，收到中断消息时调用 {@link #interruptSessionLocal}
+     * 执行本地中断（不再次发布消息，避免循环广播）。</p>
+     */
+    @PostConstruct
+    public void initInterruptListener() {
+        stringRedisTemplateOpt.ifPresent(redis -> {
+            try {
+                redisListenerContainer = new RedisMessageListenerContainer();
+                redisListenerContainer.setConnectionFactory(redis.getConnectionFactory());
+                // 监听器：收到中断消息后检查本地是否有该会话的活跃订阅，有则本地中断
+                MessageListener listener = (message, pattern) -> {
+                    String sessionId = new String(message.getBody(), java.nio.charset.StandardCharsets.UTF_8);
+                    log.info("[Chat] 收到跨实例中断消息: sessionId={}", sessionId);
+                    if (activeSubscriptions.containsKey(sessionId)) {
+                        interruptSessionLocal(sessionId);
+                    }
+                };
+                redisListenerContainer.addMessageListener(listener, new ChannelTopic(INTERRUPT_CHANNEL));
+                redisListenerContainer.afterPropertiesSet();
+                redisListenerContainer.start();
+                log.info("[Chat] 已订阅跨实例中断频道: {}", INTERRUPT_CHANNEL);
+            } catch (Exception e) {
+                log.warn("[Chat] 订阅跨实例中断频道失败，多实例中断不可用: {}", e.getMessage());
+            }
+        });
+    }
+
+    /**
+     * 销毁 Redis 监听容器，释放资源（P1-7）。
+     */
+    @PreDestroy
+    public void destroyInterruptListener() {
+        if (redisListenerContainer != null) {
+            try {
+                redisListenerContainer.destroy();
+                log.info("[Chat] 已销毁跨实例中断监听器");
+            } catch (Exception e) {
+                log.warn("[Chat] 销毁跨实例中断监听器失败: {}", e.getMessage());
+            }
+        }
     }
 
     /**
@@ -279,25 +372,91 @@ public class ChatService {
                                 sessionId, info.getToolCallId(), info.getToolName(), allowed,
                                 info.getInput() != null ? info.getInput() : "null");
 
-                        // AgentScope 2.0.0 的 ToolUseBlock.getSuggestedRules() 不存在，
-                        // 手动构造 ALLOW 规则注册到权限引擎，使后续相同工具调用自动放行
-                        List<PermissionRule> rules = allowed
-                                ? List.of(new PermissionRule(info.getToolName(), null, PermissionBehavior.ALLOW, "suggested"))
-                                : null;
-
-                        return new ConfirmResult(allowed, toolUse, rules);
+                        // 不添加 ALLOW 规则：PermissionContextState 是单例 Bean，ALLOW 规则会跨会话持久化，
+                        // 导致后续相同工具调用不再触发 HITL。每次设备控制都应触发权限确认。
+                        return new ConfirmResult(allowed, toolUse, null);
                     })
                     .toList();
 
             // 清除 Redis 中的待确认缓存
             pendingConfirmationService.clearPendingConfirmations(sessionId);
 
-            // 构建携带确认结果的用户消息（遵循官方示例：不设 textContent，只发 metadata）
+            // 检查是否全部拒绝：如果用户拒绝了所有工具调用，直接返回取消消息，不恢复 Agent 执行
+            // 通过遍历 pendingInfos 和 userDecisions/naturalLanguageDeny 来判断，避免访问 ConfirmResult 内部
+            boolean allDenied = pendingInfos.stream().allMatch(info -> {
+                boolean allowed = userDecisions.containsKey(info.getToolCallId())
+                        ? userDecisions.get(info.getToolCallId())
+                        : !naturalLanguageDeny;
+                return !allowed;
+            });
+            if (allDenied) {
+                log.info("[Chat] 用户拒绝了全部工具调用，直接返回取消消息: sessionId={}", sessionId);
+
+                String cancelReply = "好的，已取消执行该操作。如果您需要其他帮助，请随时告诉我。";
+
+                // 直接通过 SSE 返回取消回复，不恢复 Agent 执行（避免 LLM 重新发起工具调用询问）
+                sendEvent(emitter, SSE_EVENT_AGENT_START, sessionId, Map.of());
+                sendEvent(emitter, SSE_EVENT_AGENT_END, sessionId, Map.of(
+                        "cancelled", true,
+                        BusinessConst.RESPONSE_KEY_MESSAGE, cancelReply));
+
+                // 保存用户取消消息和 Agent 取消回复到对话记录
+                chatRecordService.saveUserMessage(sessionId, userId, houseId,
+                        userMessage != null ? userMessage : "取消");
+                chatRecordService.saveAssistantMessage(sessionId, userId, cancelReply);
+
+                sendDone(emitter);
+                emitter.complete();
+                return;
+            }
+
+            // 部分拒绝场景：在 resumeMsg 中添加文本说明，让 LLM 知道哪些工具被拒绝了
+            // 避免 LLM 恢复后看到之前的工具调用上下文但不知道用户已拒绝，重新发起询问
+            StringBuilder textContent = new StringBuilder();
+            List<ToolCallInfo> deniedInfos = pendingInfos.stream()
+                    .filter(info -> {
+                        boolean allowed = userDecisions.containsKey(info.getToolCallId())
+                                ? userDecisions.get(info.getToolCallId())
+                                : !naturalLanguageDeny;
+                        return !allowed;
+                    })
+                    .toList();
+            if (!deniedInfos.isEmpty()) {
+                textContent.append("用户已拒绝以下工具调用，请不要再询问是否执行，直接告知用户已取消：\n");
+                for (ToolCallInfo denied : deniedInfos) {
+                    textContent.append("- 工具 ").append(denied.getToolName())
+                            .append("（调用ID: ").append(denied.getToolCallId()).append("）已被用户拒绝\n");
+                }
+                textContent.append("对于用户同意的工具调用，请继续执行。");
+            }
+
+            // 用户确认场景：在 resumeMsg 中添加文本说明，告诉 LLM 工具已被用户授权执行
+            // 避免 LLM 误判工具返回结果后重试调用（重试会再次触发 HITL，形成循环）
+            List<ToolCallInfo> allowedInfos = pendingInfos.stream()
+                    .filter(info -> {
+                        boolean allowed = userDecisions.containsKey(info.getToolCallId())
+                                ? userDecisions.get(info.getToolCallId())
+                                : !naturalLanguageDeny;
+                        return allowed;
+                    })
+                    .toList();
+            if (!allowedInfos.isEmpty() && deniedInfos.isEmpty()) {
+                textContent.append("用户已确认同意执行以下工具调用，请直接执行，不要重复调用已执行成功的工具：\n");
+                for (ToolCallInfo allowed : allowedInfos) {
+                    textContent.append("- 工具 ").append(allowed.getToolName())
+                            .append("（调用ID: ").append(allowed.getToolCallId()).append("）已被用户授权\n");
+                }
+                textContent.append("工具执行成功后，请直接告知用户执行结果，不要重复调用。");
+            }
+
+            // 构建携带确认结果的用户消息（metadata 传 ConfirmResult + textContent 传拒绝说明）
             Msg resumeMsg = UserMessage.builder()
+                    .textContent(textContent.length() > 0 ? textContent.toString() : null)
                     .metadata(Map.of(Msg.METADATA_CONFIRM_RESULTS, confirmResults))
                     .build();
 
-            log.info("[Chat] 发送权限确认恢复消息: sessionId={}, confirmCount={}", sessionId, confirmResults.size());
+            log.info("[Chat] 发送权限确认恢复消息: sessionId={}, confirmCount={}, deniedCount={}",
+                    sessionId, confirmResults.size(), deniedInfos.size());
 
             sendEvent(emitter, SSE_EVENT_AGENT_START, sessionId, Map.of());
 
@@ -332,6 +491,22 @@ public class ChatService {
                         if (wasInterrupted) {
                             log.info("[Chat] 权限恢复后框架优雅中断完成: sessionId={}, 耗时={}ms",
                                     sessionId, totalDurationMs);
+                            return;
+                        }
+
+                        // 权限暂停场景：Agent 在恢复执行后再次触发 HITL（如 LLM 重试工具调用），
+                        // 不发送 agent_end，保持 SSE 等待用户第二次确认
+                        if (recorder.permissionPaused) {
+                            log.info("[Chat] 权限恢复后再次触发 HITL 暂停: sessionId={}, 耗时={}ms",
+                                    sessionId, totalDurationMs);
+                            try {
+                                sendEvent(emitter, SSE_EVENT_PERMISSION_PAUSED, sessionId, Map.of(
+                                        "message", MSG_PERMISSION_PAUSED));
+                            } catch (IOException e) {
+                                log.warn("[Chat] 发送 permission_paused 失败: {}", e.getMessage());
+                            }
+                            sendDone(emitter);
+                            emitter.complete();
                             return;
                         }
 
@@ -649,13 +824,9 @@ public class ChatService {
                     log.info("[Chat] 自然语言恢复确认: sessionId={}, toolCallId={}, toolName={}, allowed={}",
                             sessionId, info.getToolCallId(), info.getToolName(), allowed);
 
-                    // AgentScope 2.0.0 的 ToolUseBlock.getSuggestedRules() 不存在，
-                    // 手动构造 ALLOW 规则注册到权限引擎，使后续相同工具调用自动放行
-                    List<PermissionRule> rules = allowed
-                            ? List.of(new PermissionRule(info.getToolName(), null, PermissionBehavior.ALLOW, "suggested"))
-                            : null;
-
-                    return new ConfirmResult(allowed, toolUse, rules);
+                    // 不添加 ALLOW 规则：PermissionContextState 是单例 Bean，ALLOW 规则会跨会话持久化，
+                    // 导致后续相同工具调用不再触发 HITL。每次设备控制都应触发权限确认。
+                    return new ConfirmResult(allowed, toolUse, null);
                 })
                 .toList();
 

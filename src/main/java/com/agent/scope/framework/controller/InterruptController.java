@@ -1,9 +1,11 @@
 package com.agent.scope.framework.controller;
 
+import com.agent.scope.framework.annotation.Auditable;
 import com.agent.scope.framework.constant.BusinessConst;
 import com.agent.scope.framework.exception.BusinessException;
 import com.agent.scope.framework.exception.ErrorCode;
 import com.agent.scope.framework.service.ChatService;
+import com.agent.scope.framework.vo.Response;
 import io.agentscope.harness.agent.HarnessAgent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -36,7 +38,7 @@ import java.util.Map;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/chat/interrupt")
+@RequestMapping("/api/v1/chat/interrupt")
 @RequiredArgsConstructor
 public class InterruptController {
 
@@ -58,7 +60,8 @@ public class InterruptController {
      * @return 中断结果
      */
     @PostMapping
-    public Map<String, Object> interrupt(@RequestParam String userId,
+    @Auditable(action = "INTERRUPT", target = "中断Agent执行")
+    public Response<Map<String, Object>> interrupt(@RequestParam String userId,
                                          @RequestParam String sessionId) {
         log.info("[Interrupt] 收到中断请求: userId={}, sessionId={}", userId, sessionId);
 
@@ -89,7 +92,7 @@ public class InterruptController {
         result.put("userId", userId);
         result.put("sessionId", sessionId);
         result.put("subscriptionDisposed", subscriptionInterrupted);
-        return result;
+        return Response.success(result);
     }
 
     /**
