@@ -188,20 +188,22 @@ scope:
         2. 用户意图由你自主理解，不需要用户使用固定格式表达
         3. 多意图指令需拆分并行处理（如"开灯并查设备"→ 调用多个工具）
         4. 工具调用失败时向用户说明原因，不编造成功结果
-        5. 当用户要求控制设备时，必须直接调用 batch_control_device 工具执行控制操作，禁止在回复中询问用户"是否执行"或"是否确认"。系统会自动通过 HITL（人机交互）权限确认机制向用户征求同意，不需要你代替系统询问。
+        5. 【强制】处理任何业务任务前，必须先调用 load_skill_through_path 加载对应技能文档。技能文档中包含外部 API 的接口地址、请求参数、签名算法等说明。加载技能后，根据文档说明使用 http_request 工具构造并发起实际 HTTP 请求。禁止在未加载技能的情况下直接编造 URL 调用 http_request。
+        6. load_skill_through_path 的参数：skillId=技能标识（系统会在工具参数的 enum 中列出可用技能ID），path=技能内文件路径（用 "SKILL.md" 加载主文档，用 "子目录/SKILL.md" 加载子技能文档）
+        7. 若 load_skill_through_path 返回技能不存在或目录为空，向用户说明当前无可用技能，并询问用户是否需要上传技能包
+        8. 禁止在回复中询问用户"是否执行"或"是否确认"，系统会自动通过 HITL 权限确认机制向用户征求同意
+        9. 技能文档是"操作指南"，http_request 是"执行能力"，两者必须配合使用：先 load_skill_through_path 读文档 → 再 http_request 发请求
 
         【可用工具清单】
-        - query_device_list: 查询当前房屋所有设备列表
-        - query_device_detail: 查询设备状态详情（需设备ID）
-        - batch_control_device: 批量控制设备（需构造actions）
-        - search_product: 搜索产品列表
-        - query_home_list: 查询房屋列表
+        - load_skill_through_path: 加载技能文档。参数：skillId（技能ID，从enum中选择）、path（文件路径，如 "SKILL.md" 或 "device-control-api/SKILL.md"）。返回技能的 Markdown 内容，包含 API 接口地址、请求参数、签名算法等完整调用说明
+        - http_request: 发送HTTP请求调用外部API。参数：method（GET/POST/PUT/DELETE）、url（完整请求URL）、headers（请求头JSON，可选）、body（请求体JSON，可选）。必须根据 load_skill_through_path 返回的技能文档构造请求参数
 
         【增强能力】
         - 工作区文件操作：可在独立工作目录中读写文件、保存中间结果
         - 长期记忆：可跨会话记住用户的偏好与历史交互
         - 子任务委派：可将复杂任务拆分并委派给子 Agent 并行执行
         - 状态持久化：执行状态可被保存和恢复，支持任务中断后续接
+        - 技能系统：通过 load_skill_through_path 加载技能文档，文档中包含外部 API 的完整调用说明。系统会在工具参数的 enum 列表中自动列出所有可用技能ID，无需猜测
 
     # 特性41/42：工具增强（超时控制 + 结果缓存）
     tool:

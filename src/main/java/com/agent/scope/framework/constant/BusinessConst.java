@@ -1,5 +1,7 @@
 package com.agent.scope.framework.constant;
 
+import java.util.List;
+
 /**
  * 业务常量接口。
  * <p>
@@ -180,6 +182,44 @@ public interface BusinessConst {
     String SKILL_META_KEY_TRIGGERS = "triggers";
     /** 技能元数据键：执行步骤 */
     String SKILL_META_KEY_STEPS = "steps";
+
+    // ==================== 技能上传管理常量（特性28增强）====================
+
+    /** 技能上传文件大小上限（字节），默认 64KB */
+    int SKILL_UPLOAD_MAX_SIZE_BYTES = 64 * 1024;
+    /** 技能名称合法字符正则（仅允许字母、数字、下划线、短横线） */
+    String SKILL_NAME_REGEX = "^[a-zA-Z0-9_\\-]+$";
+    /** YAML frontmatter 分隔符 */
+    String SKILL_FRONTMATTER_DELIMITER = "---";
+    /** YAML frontmatter 中键值分隔符 */
+    String SKILL_FRONTMATTER_KV_SEPARATOR = ":";
+
+    // ==================== 技能压缩包上传常量（特性28增强）====================
+
+    /** 技能压缩包大小上限（字节），默认 10MB */
+    int SKILL_PACKAGE_MAX_SIZE_BYTES = 10 * 1024 * 1024;
+    /** 技能压缩包内文件数量上限，防止 zip bomb */
+    int SKILL_PACKAGE_MAX_FILE_COUNT = 100;
+    /** 技能压缩包允许的扩展名 */
+    String SKILL_PACKAGE_SUFFIX_ZIP = ".zip";
+    /** 技能定义文件名（每个技能目录下的核心文件） */
+    String SKILL_DEFINITION_FILENAME = "SKILL.md";
+    /**
+     * 压缩包解压时允许的文件扩展名白名单。
+     * <p>包含：技能文件、配置文件、静态资源、脚本文件等。</p>
+     */
+    List<String> SKILL_PACKAGE_ALLOWED_SUFFIXES = List.of(
+            // 技能与文档
+            ".md", ".txt", ".rst",
+            // 配置文件
+            ".env", ".json", ".yml", ".yaml", ".xml", ".ini", ".conf", ".properties", ".toml",
+            // 脚本文件
+            ".sh", ".py", ".js", ".ts", ".sql",
+            // 静态资源
+            ".html", ".css", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".ico",
+            // 数据文件
+            ".csv"
+    );
 
     // ==================== Channel 通信常量（特性24）====================
 

@@ -69,6 +69,20 @@ public enum ErrorCode {
     // ==================== 技能模块（SKILL_7xx）====================
     SKILL_PROMOTION_FAILED("SKILL_001", "技能自动沉淀失败", 500),
     SKILL_GENERATE_FAILED("SKILL_002", "技能内容生成失败", 500),
+    SKILL_REPOSITORY_NOT_ENABLED("SKILL_003", "技能仓库未启用，请开启 skill-repository-enabled 配置", 400),
+    SKILL_NOT_FOUND("SKILL_004", "技能不存在", 404),
+    SKILL_FILE_INVALID("SKILL_005", "技能文件格式无效，需包含 YAML frontmatter（name 字段必填）", 400),
+    SKILL_NAME_INVALID("SKILL_006", "技能名称非法，仅允许字母、数字、下划线、短横线", 400),
+    SKILL_FILE_TOO_LARGE("SKILL_007", "技能文件超过大小上限", 400),
+    SKILL_ALREADY_EXISTS("SKILL_008", "技能已存在，请先删除或使用覆盖模式", 409),
+    SKILL_DELETE_FAILED("SKILL_009", "技能删除失败", 500),
+    SKILL_UPLOAD_FAILED("SKILL_010", "技能上传失败", 500),
+    SKILL_PACKAGE_FORMAT_INVALID("SKILL_011", "压缩包格式无效，仅支持 .zip 格式", 400),
+    SKILL_PACKAGE_TOO_LARGE("SKILL_012", "压缩包超过大小上限", 400),
+    SKILL_PACKAGE_TOO_MANY_FILES("SKILL_013", "压缩包内文件数量超过上限", 400),
+    SKILL_PACKAGE_ENTRY_PATH_INVALID("SKILL_014", "压缩包内文件路径非法（疑似 Zip Slip 攻击）", 400),
+    SKILL_PACKAGE_EXTRACT_FAILED("SKILL_015", "压缩包解压失败", 500),
+    SKILL_PACKAGE_NO_VALID_SKILLS("SKILL_016", "压缩包内未找到有效的技能文件（.md）", 400),
 
     // ==================== MCP 协议模块（MCP_9xx，特性26）====================
     MCP_SERVER_MANAGER_INIT_FAILED("MCP_001", "MCP 服务器管理器初始化失败", 500),
