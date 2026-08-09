@@ -5,7 +5,9 @@ import com.agent.scope.framework.dto.ChatStreamDTO;
 import com.agent.scope.framework.dto.PermissionConfirmDTO;
 import com.agent.scope.framework.exception.BusinessException;
 import com.agent.scope.framework.exception.ErrorCode;
+import com.agent.scope.framework.model.UserSession;
 import com.agent.scope.framework.service.ChatService;
+import com.agent.scope.framework.service.SessionManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
@@ -21,15 +23,10 @@ import static com.agent.scope.framework.utils.ChatUtils.extractAccessToken;
 /**
  * 聊天控制器。
  * <p>
- * 提供会话创建、消息发送与 SSE 流式接收接口。
- * </p>
- * <p>
- * <b>接口列表</b>：
+ * 支持两种认证方式：
  * <ul>
- *   <li>POST /api/chat/session/create - 创建会话（JSON 请求体）</li>
- *   <li>POST /api/chat/message - 发送消息（JSON 请求体，缓存供流式消费）</li>
- *   <li>POST /api/chat/stream - SSE 流式接收响应</li>
- *   <li>POST /api/chat/confirm - 权限确认（HITL 人机交互，敏感工具调用审批）</li>
+ *   <li>Authorization: Bearer {jwt} — 从 JWT 提取 user/accessToken</li>
+ *   <li>X-Session-Token — HDL 登录会话，从 SessionManager 解析 UserSession</li>
  * </ul>
  * </p>
  *
@@ -46,13 +43,12 @@ public class ChatController {
     /** SSE 并发连接数上限 */
     private static final int MAX_CONCURRENT_SSE = 500;
 
-    /** SSE 并发连接信号量（限制同时活跃的 SSE 流数量） */
+    /** SSE 并发连接信号量 */
     private static final Semaphore SSE_SEMAPHORE = new Semaphore(MAX_CONCURRENT_SSE);
 
-    /**
-     * 核心聊天服务
-     */
     private final ChatService chatService;
+
+    private final SessionManager sessionManager;
 
 
     /**
@@ -62,17 +58,44 @@ public class ChatController {
      */
     @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter stream(@Validated @RequestBody ChatStreamDTO dto,
-                             @RequestHeader(value = "Authorization", required = true) String authHeader
+                             @RequestHeader(value = "Authorization", required = false) String authHeader,
+                             @RequestHeader(value = "X-Session-Token", required = false) String sessionToken
     ) {
         if (!SSE_SEMAPHORE.tryAcquire()) {
             throw new BusinessException(ErrorCode.RATE_LIMITED,
                     "SSE并发连接数已达上限: " + MAX_CONCURRENT_SSE);
         }
-        log.info("[Chat] SSE 流连接: sessionId={}, userId={}, houseId={}", dto.getSessionId(), dto.getUserId(), dto.getHouseId());
 
-        // 从 Authorization 头提取 accessToken
-        String accessToken = extractAccessToken(authHeader);
-        dto.setAccessToken(accessToken);
+        // 1. 优先从 X-Session-Token 解析用户上下文（HDL 登录流程）
+        if (sessionToken != null && !sessionToken.isEmpty()) {
+            UserSession session = sessionManager.getSession(sessionToken);
+            if (session != null && session.isLoggedIn()) {
+                // 注入用户信息和 hdlAccessToken
+                dto.setUserId(session.getLoginName());
+                dto.setAccessToken(session.getHdlAccessToken());
+                if (dto.getHouseId() == null && session.getCurrentHomeId() != null) {
+                    dto.setHouseId(session.getCurrentHomeId());
+                }
+                log.info("[Chat] 从 X-Session-Token 解析用户: loginName={}, houseId={}",
+                        session.getLoginName(), dto.getHouseId());
+            } else {
+                log.warn("[Chat] X-Session-Token 无效或已过期: token={}", sessionToken);
+            }
+        }
+
+        // 2. 兜底：从 Authorization 头提取 accessToken
+        if (dto.getAccessToken() == null && authHeader != null) {
+            dto.setAccessToken(extractAccessToken(authHeader));
+        }
+
+        // 3. userId 由 Controller 从 Session 注入，前端可不传，此处编程校验
+        if (dto.getUserId() == null || dto.getUserId().isEmpty()) {
+            SSE_SEMAPHORE.release();
+            throw new BusinessException(ErrorCode.PARAM_INVALID, "用户信息不能为空，请先登录");
+        }
+
+        log.info("[Chat] SSE 流连接: sessionId={}, userId={}, houseId={}",
+                dto.getSessionId(), dto.getUserId(), dto.getHouseId());
 
         // 创建 SSE Emitter，超时时间 5 分钟
         SseEmitter emitter = new SseEmitter(SSE_EMITTER_TIMEOUT);

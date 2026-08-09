@@ -31,9 +31,15 @@ public class EventContext {
         this.objectMapper = objectMapper;
     }
 
-    /** 发送 SSE 事件 JSON */
+    /** 发送 SSE 事件 JSON（附带 event: 头，前端按此分发回调） */
     public void sendEventBo(Object eventBO) throws Exception {
-        emitter.send(SseEmitter.event().data(toJson(eventBO)));
+        String eventType = "unknown";
+        try {
+            eventType = (String) eventBO.getClass().getMethod("getType").invoke(eventBO);
+        } catch (Exception ignored) {
+            // 兜底：无法提取 type 时使用 unknown
+        }
+        emitter.send(SseEmitter.event().name(eventType).data(toJson(eventBO)));
     }
 
     /** 对象转 JSON 字符串 */

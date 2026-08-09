@@ -73,6 +73,12 @@ public class Response<T> implements Serializable {
      */
     private long timestamp;
 
+    /**
+     * 是否成功（code == 200 时为 true）。
+     * <p>前端 ApiResult 接口约定字段，与 {@code code} 冗余但便于前端统一判断。</p>
+     */
+    private boolean success;
+
     // ==================== 静态工厂方法 ====================
 
     /**
@@ -87,6 +93,7 @@ public class Response<T> implements Serializable {
                 .code(CODE_SUCCESS)
                 .message(MESSAGE_SUCCESS)
                 .data(data)
+                .success(true)
                 .requestId(UUID.randomUUID().toString())
                 .timestamp(System.currentTimeMillis())
                 .build();
@@ -105,6 +112,7 @@ public class Response<T> implements Serializable {
                 .code(CODE_SUCCESS)
                 .message(message)
                 .data(data)
+                .success(true)
                 .requestId(UUID.randomUUID().toString())
                 .timestamp(System.currentTimeMillis())
                 .build();
@@ -122,6 +130,7 @@ public class Response<T> implements Serializable {
                 .code(CODE_SUCCESS)
                 .message(MESSAGE_SUCCESS)
                 .data(null)
+                .success(true)
                 .requestId(UUID.randomUUID().toString())
                 .timestamp(System.currentTimeMillis())
                 .build();
@@ -140,6 +149,7 @@ public class Response<T> implements Serializable {
                 .code(code)
                 .message(message)
                 .data(null)
+                .success(false)
                 .requestId(UUID.randomUUID().toString())
                 .timestamp(System.currentTimeMillis())
                 .build();
@@ -158,6 +168,7 @@ public class Response<T> implements Serializable {
                 .code(CODE_ERROR_DEFAULT)
                 .message(message)
                 .data(null)
+                .success(false)
                 .requestId(UUID.randomUUID().toString())
                 .timestamp(System.currentTimeMillis())
                 .build();

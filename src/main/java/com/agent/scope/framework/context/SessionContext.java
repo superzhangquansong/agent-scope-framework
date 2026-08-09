@@ -1,11 +1,13 @@
 package com.agent.scope.framework.context;
 
+import com.agent.scope.framework.hdl.ImageInfo;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
+import java.util.List;
 
 /**
  * 统一会话上下文 POJO —— SessionContext
@@ -94,4 +96,13 @@ public class SessionContext implements Serializable {
      * 租户 ID（多租户隔离用）
      */
     private String tenantId;
+
+    /**
+     * 多模态图片列表（用户上传的图片，Base64 编码）。
+     *
+     * <p>由 ChatService 在构建 SessionContext 时从 ChatStreamDTO 注入，
+     * FloorPlanTool 等需要图片的工具方法通过 SessionContext 获取。
+     * 为 null 或空时表示纯文本请求（无图片）。</p>
+     */
+    private List<ImageInfo> images;
 }

@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GLB 3D 模型调试工具（增强版）</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0414; font-family: 'PingFang SC', sans-serif; color: #e2e8f0; }
+    #canvas-container { width: 100vw; height: 100vh; }
+
+    /* ===== 顶部控制栏 ===== */
+    #toolbar {
+      position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 100;
+      display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;
+      background: rgba(15, 12, 30, 0.9); backdrop-filter: blur(12px);
+      border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 10px;
+      padding: 8px 12px;
+    }
+    #toolbar button {
+      background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.3);
+      color: #c084fc; padding: 6px 12px; border-radius: 6px; cursor: pointer;
+      font-size: 12px; transition: all 0.2s; font-family: inherit;
+    }
+    #toolbar button:hover { background: rgba(168, 85, 247, 0.35); border-color: rgba(168, 85, 247, 0.6); }
+    #toolbar button.active { background: rgba(168, 85, 247, 0.5); color: #fff; border-color: #a855f7; }
+
+    /* ===== 调试信息面板 ===== */
+    #info-panel {
+      position: fixed; top: 60px; left: 12px; z-index: 100;
+      background: rgba(15, 12, 30, 0.92); backdrop-filter: blur(12px);
+      border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 8px;
+      padding: 14px 18px; min-width: 340px; max-width: 480px;
+      font-size: 12px; line-height: 1.7; max-height: calc(100vh - 120px); overflow-y: auto;
+    }
+    #info-panel h3 { color: #c084fc; margin-bottom: 10px; font-size: 14px; text-shadow: 0 0 8px rgba(168,85,247,0.6); border-bottom: 1px solid rgba(168,85,247,0.2); padding-bottom: 6px; }
+    #info-panel h4 { color: #5ff7f0; margin: 10px 0 4px 0; font-size: 12px; }
+    #info-panel .row { display: flex; justify-content: space-between; gap: 12px; padding: 1px 0; }
+    #info-panel .label { color: #94a3b8; }
+    #info-panel .value { color: #5ff7f0; font-family: monospace; word-break: break-all; text-align: right; }
+    #info-panel .warn { color: #fbbf24; }
+    #info-panel .err { color: #f87171; }
+    #info-panel .ok { color: #5fff5f; }
+    #info-panel .section { margin-top: 8px; padding-top: 6px; border-top: 1px dashed rgba(168,85,247,0.15); }
+
+    /* ===== 加载进度 ===== */
+    #progress-bar {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      z-index: 200; text-align: center;
+      background: rgba(15, 12, 30, 0.9); border: 1px solid rgba(168, 85, 247, 0.3);
+      border-radius: 12px; padding: 30px 40px;
+    }
+    #progress-bar.hidden { display: none; }
+    #progress-text { color: #5ff7f0; font-size: 14px; margin-bottom: 12px; font-family: monospace; }
+    #progress-track { width: 280px; height: 4px; background: rgba(100,100,100,0.3); border-radius: 2px; overflow: hidden; }
+    #progress-fill { height: 100%; background: linear-gradient(90deg, #a855f7, #22fff7); width: 0%; transition: width 0.2s; }
+
+    .controls-hint {
+      position: fixed; bottom: 12px; left: 12px; z-index: 100;
+      background: rgba(15, 12, 30, 0.7); border: 1px solid rgba(168, 85, 247, 0.2);
+      border-radius: 6px; padding: 8px 12px; font-size: 11px; color: #94a3b8;
+    }
+  </style>
+</head>
+<body>
+  <div id="canvas-container"></div>
+
+  <!-- 顶部控制栏 -->
+  <div id="toolbar">
+    <button id="btn-material" title="切换材质">原材质</button>
+    <button id="btn-rotate" title="自动旋转">自动旋转: 开</button>
+    <button id="btn-helper" class="active" title="调试辅助">辅助: 显示</button>
+    <button id="btn-reset" title="重置相机">重置相机</button>
+    <button id="btn-orient" class="active" title="朝向修正">朝向修正: 开</button>
+  </div>
+
+  <!-- 加载进度 -->
+  <div id="progress-bar">
+    <div id="progress-text">准备加载...</div>
+    <div id="progress-track"><div id="progress-fill"></div></div>
+  </div>
+
+  <!-- 调试信息面板 -->
+  <div id="info-panel" style="display:none;">
+    <h3>GLB 模型调试信息</h3>
+    <div class="row"><span class="label">文件路径:</span><span class="value" id="info-url">/girl.glb</span></div>
+    <div class="row"><span class="label">文件大小:</span><span class="value" id="info-size">-</span></div>
+    <div class="row"><span class="label">加载状态:</span><span class="value" id="info-status">-</span></div>
+    <div class="row"><span class="label">加载耗时:</span><span class="value" id="info-time">-</span></div>
+
+    <div class="section">
+      <h4>原始包围盒（修正前）</h4>
+      <div class="row"><span class="label">尺寸 X×Y×Z:</span><span class="value" id="info-orig-box">-</span></div>
+      <div class="row"><span class="label">最长轴:</span><span class="value" id="info-longest">-</span></div>
+      <div class="row"><span class="label">朝向判断:</span><span class="value" id="info-orient">-</span></div>
+    </div>
+
+    <div class="section">
+      <h4>修正后（旋转+居中+缩放）</h4>
+      <div class="row"><span class="label">是否旋转:</span><span class="value" id="info-rotated">-</span></div>
+      <div class="row"><span class="label">缩放后尺寸:</span><span class="value" id="info-box">-</span></div>
+      <div class="row"><span class="label">缩放系数:</span><span class="value" id="info-scale">-</span></div>
+    </div>
+
+    <div class="section">
+      <h4>相机参数</h4>
+      <div class="row"><span class="label">位置:</span><span class="value" id="info-cam">-</span></div>
+      <div class="row"><span class="label">FOV:</span><span class="value" id="info-fov">45°</span></div>
+      <div class="row"><span class="label">near/far:</span><span class="value" id="info-nearfar">-</span></div>
+      <div class="row"><span class="label">距离原点:</span><span class="value" id="info-camdist">-</span></div>
+    </div>
+
+    <div class="section">
+      <h4>模型内容</h4>
+      <div class="row"><span class="label">动画数量:</span><span class="value" id="info-anim">-</span></div>
+      <div class="row"><span class="label">Mesh 数量:</span><span class="value" id="info-mesh">-</span></div>
+      <div class="row"><span class="label">材质数量:</span><span class="value" id="info-mat">-</span></div>
+      <div class="row"><span class="label">Draco:</span><span class="value" id="info-draco">已配置</span></div>
+    </div>
+
+    <div class="section">
+      <h4>Mesh 详情</h4>
+      <div id="info-mesh-list" style="font-size:11px; color:#94a3b8; max-height:180px; overflow-y:auto;"></div>
+    </div>
+  </div>
+
+  <div class="controls-hint">左键拖拽旋转 · 滚轮缩放 · 右键平移 · 顶部按钮切换材质/辅助</div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+    import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+    const GLB_URL = '/girl.glb';
+    const loadStart = performance.now();
+
+    // ===== 场景 / 相机 / 渲染器 =====
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0a0414);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 200000);
+    camera.position.set(0, 1, 5);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.0;
+    document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+    // ===== 环境贴图（RoomEnvironment 提供标准 PBR 照明，避免材质全黑） =====
+    const pmremGenerator = new THREE.PMREMGenerator(renderer);
+    scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
+
+    // ===== 光源 =====
+    scene.add(new THREE.AmbientLight(0xffffff, 1.0));
+    const hemi = new THREE.HemisphereLight(0xa855f7, 0x06b6d4, 0.8);
+    scene.add(hemi);
+    const dir = new THREE.DirectionalLight(0xffffff, 2.0);
+    dir.position.set(5, 8, 5);
+    scene.add(dir);
+    const p1 = new THREE.PointLight(0xa855f7, 1.0, 50);
+    p1.position.set(-3, 2, -2);
+    scene.add(p1);
+    const p2 = new THREE.PointLight(0x06b6d4, 0.8, 50);
+    p2.position.set(3, 1, 2);
+    scene.add(p2);
+
+    // ===== 调试辅助：包围盒线框 + 坐标轴 + 地面网格 =====
+    let boxHelper = null;
+    let axesHelper = null;
+    let gridHelper = null;
+
+    function createHelpers(target) {
+      // 包围盒线框（红色）
+      const box = new THREE.Box3().setFromObject(target);
+      boxHelper = new THREE.Box3Helper(box, 0xff3366);
+      scene.add(boxHelper);
+      // 坐标轴（红 x, 绿 y, 蓝 z，长度 3）
+      axesHelper = new THREE.AxesHelper(3);
+      scene.add(axesHelper);
+      // 地面网格
+      gridHelper = new THREE.GridHelper(20, 20, 0xa855f7, 0x334155);
+      gridHelper.position.y = -1.5;
+      scene.add(gridHelper);
+    }
+
+    function toggleHelpers(visible) {
+      if (boxHelper) boxHelper.visible = visible;
+      if (axesHelper) axesHelper.visible = visible;
+      if (gridHelper) gridHelper.visible = visible;
+    }
+
+    // ===== 轨道控制 =====
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.target.set(0, 0, 0);
+
+    // ===== 状态变量 =====
+    let model = null;
+    let mixer = null;
+    let autoRotate = true;
+    let materialMode = 'original'; // original / normal / standard / wireframe
+    let orientationFixed = true;
+    let originalMaterials = new Map(); // mesh -> 原始材质
+
+    // ===== 重置相机到默认位置 =====
+    function resetCamera() {
+      if (!model) return;
+      // 重新计算缩放后包围盒
+      const box = new THREE.Box3().setFromObject(model);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const maxDim = Math.max(size.x, size.y, size.z);
+      const fov = camera.fov * (Math.PI / 180);
+      const cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2)) * 1.8;
+      camera.position.set(0, size.y * 0.1, cameraZ);
+      camera.near = maxDim / 100;
+      camera.far = maxDim * 100;
+      camera.updateProjectionMatrix();
+      controls.target.set(0, 0, 0);
+      controls.minDistance = cameraZ * 0.3;
+      controls.maxDistance = cameraZ * 5;
+      controls.update();
+      updateCameraInfo();
+    }
+
+    // ===== 切换材质 =====
+    function switchMaterial(mode) {
+      if (!model) return;
+      materialMode = mode;
+      model.traverse((child) => {
+        if (child.isMesh) {
+          if (mode === 'original') {
+            // 恢复原始材质
+            const orig = originalMaterials.get(child);
+            if (orig) child.material = orig;
+          } else if (mode === 'normal') {
+            // 法线材质（彩虹色，肯定能看到形状）
+            if (!originalMaterials.has(child)) originalMaterials.set(child, child.material);
+            child.material = new THREE.MeshNormalMaterial();
+          } else if (mode === 'standard') {
+            // 标准白色材质
+            if (!originalMaterials.has(child)) originalMaterials.set(child, child.material);
+            child.material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0.1 });
+          } else if (mode === 'wireframe') {
+            // 线框模式
+            if (!originalMaterials.has(child)) originalMaterials.set(child, child.material);
+            child.material = new THREE.MeshBasicMaterial({ color: 0xa855f7, wireframe: true });
+          }
+        }
+      });
+    }
+
+    // ===== 更新相机信息显示 =====
+    function updateCameraInfo() {
+      document.getElementById('info-cam').textContent =
+        `(${camera.position.x.toFixed(2)}, ${camera.position.y.toFixed(2)}, ${camera.position.z.toFixed(2)})`;
+      document.getElementById('info-nearfar').textContent = `${camera.near.toFixed(3)} / ${camera.far.toFixed(0)}`;
+      const dist = camera.position.distanceTo(controls.target);
+      document.getElementById('info-camdist').textContent = dist.toFixed(2);
+    }
+
+    // ===== 按钮事件 =====
+    document.getElementById('btn-material').addEventListener('click', (e) => {
+      const modes = ['original', 'normal', 'standard', 'wireframe'];
+      const labels = ['原材质', '法线材质', '标准白', '线框'];
+      const idx = modes.indexOf(materialMode);
+      const next = (idx + 1) % modes.length;
+      switchMaterial(modes[next]);
+      e.target.textContent = labels[next];
+      e.target.classList.toggle('active', modes[next] !== 'original');
+    });
+
+    document.getElementById('btn-rotate').addEventListener('click', (e) => {
+      autoRotate = !autoRotate;
+      e.target.textContent = `自动旋转: ${autoRotate ? '开' : '关'}`;
+      e.target.classList.toggle('active', autoRotate);
+    });
+
+    document.getElementById('btn-helper').addEventListener('click', (e) => {
+      const visible = !boxHelper.visible;
+      toggleHelpers(visible);
+      e.target.textContent = `辅助: ${visible ? '显示' : '隐藏'}`;
+      e.target.classList.toggle('active', visible);
+    });
+
+    document.getElementById('btn-reset').addEventListener('click', () => {
+      resetCamera();
+    });
+
+    document.getElementById('btn-orient').addEventListener('click', (e) => {
+      // 重新加载模型以切换朝向
+      location.reload();
+    });
+
+    // ===== 加载 GLB =====
+    const progressBar = document.getElementById('progress-bar');
+    const progressText = document.getElementById('progress-text');
+    const progressFill = document.getElementById('progress-fill');
+
+    fetch(GLB_URL, { method: 'HEAD' }).then(r => {
+      const size = r.headers.get('content-length');
+      if (size) document.getElementById('info-size').textContent = (parseInt(size) / 1024 / 1024).toFixed(2) + ' MB';
+    }).catch(() => {});
+
+    const loader = new GLTFLoader();
+    const dracoLoader = new DRACOLoader();
+    dracoLoader.setDecoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/draco/');
+    loader.setDRACOLoader(dracoLoader);
+
+    loader.load(
+      GLB_URL,
+      (gltf) => {
+        model = gltf.scene;
+        const loadTime = ((performance.now() - loadStart) / 1000).toFixed(2);
+
+        // 统计 Mesh / 材质
+        let meshCount = 0;
+        const materials = new Set();
+        const meshDetails = [];
+        model.traverse((child) => {
+          if (child.isMesh) {
+            meshCount++;
+            const matName = Array.isArray(child.material) ? child.material.map(m => m.type).join(',') : child.material.type;
+            if (Array.isArray(child.material)) {
+              child.material.forEach(m => materials.add(m));
+            } else {
+              materials.add(child.material);
+            }
+            const meshBox = new THREE.Box3().setFromObject(child);
+            const meshSize = new THREE.Vector3();
+            meshBox.getSize(meshSize);
+            meshDetails.push({
+              name: child.name || `Mesh${meshCount}`,
+              material: matName,
+              size: `${meshSize.x.toFixed(2)}×${meshSize.y.toFixed(2)}×${meshSize.z.toFixed(2)}`,
+              pos: `(${child.position.x.toFixed(1)},${child.position.y.toFixed(1)},${child.position.z.toFixed(1)})`,
+            });
+            // 保存原始材质
+            originalMaterials.set(child, child.material);
+          }
+        });
+
+        // ===== 原始包围盒（修正前） =====
+        const box0 = new THREE.Box3().setFromObject(model);
+        const size0 = new THREE.Vector3();
+        box0.getSize(size0);
+        document.getElementById('info-orig-box').textContent =
+          `${size0.x.toFixed(1)} × ${size0.y.toFixed(1)} × ${size0.z.toFixed(1)}`;
+
+        // 判断最长轴和朝向
+        const maxAxis = Math.max(size0.x, size0.y, size0.z);
+        let longestAxis, orientStatus, rotated;
+        if (orientationFixed && size0.z > size0.y * 1.5) {
+          // z 是最长轴 → 模型躺平，旋转 -90° 绕 x 轴使其站立（z-up → y-up）
+          model.rotation.x = -Math.PI / 2;
+          model.updateMatrixWorld(true);
+          longestAxis = `Z (${size0.z.toFixed(0)})`;
+          orientStatus = '<span class="warn">躺平(z-up)，已旋转</span>';
+          rotated = '是 (-90° X轴)';
+        } else if (size0.y >= size0.z) {
+          longestAxis = `Y (${size0.y.toFixed(0)})`;
+          orientStatus = '<span class="ok">直立(y-up)，无需旋转</span>';
+          rotated = '否';
+        } else {
+          longestAxis = `X (${size0.x.toFixed(0)})`;
+          orientStatus = '<span class="warn">X 方向最长</span>';
+          rotated = '否';
+        }
+        document.getElementById('info-longest').innerHTML = longestAxis;
+        document.getElementById('info-orient').innerHTML = orientStatus;
+        document.getElementById('info-rotated').innerHTML = rotated;
+
+        // ===== 居中 =====
+        const box1 = new THREE.Box3().setFromObject(model);
+        const center = new THREE.Vector3();
+        box1.getCenter(center);
+        model.position.x -= center.x;
+        model.position.y -= center.y;
+        model.position.z -= center.z;
+        model.updateMatrixWorld(true);
+
+        // ===== 缩放适配（目标高度 2.5） =====
+        const box2 = new THREE.Box3().setFromObject(model);
+        const size2 = new THREE.Vector3();
+        box2.getSize(size2);
+        const targetHeight = 2.5;
+        const scaleFactor = size2.y > 0 ? targetHeight / size2.y : 1;
+        model.scale.setScalar(scaleFactor);
+        model.updateMatrixWorld(true);
+
+        // ===== 缩放后包围盒 =====
+        const box3 = new THREE.Box3().setFromObject(model);
+        const size3 = new THREE.Vector3();
+        box3.getSize(size3);
+        document.getElementById('info-box').textContent =
+          `${size3.x.toFixed(3)} × ${size3.y.toFixed(3)} × ${size3.z.toFixed(3)}`;
+        document.getElementById('info-scale').textContent = scaleFactor.toFixed(6);
+
+        // ===== 自动相机定位 =====
+        resetCamera();
+
+        // ===== 添加到场景 + 创建辅助 =====
+        scene.add(model);
+        createHelpers(model);
+
+        // ===== 播放动画 =====
+        const animNames = [];
+        if (gltf.animations && gltf.animations.length > 0) {
+          mixer = new THREE.AnimationMixer(model);
+          gltf.animations.forEach((clip) => {
+            mixer.clipAction(clip).play();
+            animNames.push(clip.name);
+          });
+        }
+
+        // ===== 填充调试信息 =====
+        const info = document.getElementById('info-panel');
+        info.style.display = 'block';
+        document.getElementById('info-url').textContent = GLB_URL;
+        document.getElementById('info-status').innerHTML = '<span class="ok">加载成功 ✓</span>';
+        document.getElementById('info-time').textContent = loadTime + ' s';
+        document.getElementById('info-anim').textContent = gltf.animations.length + ' 个' + (animNames.length ? ` (${animNames[0].substring(0, 40)})` : '');
+        document.getElementById('info-mesh').textContent = meshCount + ' 个';
+        document.getElementById('info-mat').textContent = materials.size + ' 个';
+
+        // Mesh 详情列表
+        const meshListEl = document.getElementById('info-mesh-list');
+        meshDetails.forEach(m => {
+          const div = document.createElement('div');
+          div.style.margin = '2px 0';
+          div.innerHTML = `<span style="color:#c084fc">${m.name}</span> <span style="color:#64748b">[${m.material}]</span> <span style="color:#94a3b8">${m.size}</span>`;
+          meshListEl.appendChild(div);
+        });
+
+        progressBar.classList.add('hidden');
+      },
+      (xhr) => {
+        if (xhr.lengthComputable) {
+          const percent = (xhr.loaded / xhr.total * 100).toFixed(1);
+          progressText.textContent = `加载中... ${percent}%`;
+          progressFill.style.width = percent + '%';
+        } else {
+          progressText.textContent = `加载中... ${(xhr.loaded / 1024 / 1024).toFixed(1)} MB`;
+        }
+      },
+      (error) => {
+        const loadTime = ((performance.now() - loadStart) / 1000).toFixed(2);
+        console.error('[GLB 加载失败]', error);
+        progressText.innerHTML = '<span style="color:#f87171">加载失败 ✗</span>';
+        const info = document.getElementById('info-panel');
+        info.style.display = 'block';
+        document.getElementById('info-status').innerHTML = '<span class="err">加载失败 ✗</span>';
+        document.getElementById('info-time').textContent = loadTime + ' s';
+      }
+    );
+
+    // ===== 渲染循环 =====
+    const clock = new THREE.Clock();
+    function animate() {
+      requestAnimationFrame(animate);
+      const delta = clock.getDelta();
+      if (mixer) mixer.update(delta);
+      if (autoRotate && model) {
+        model.rotation.y += delta * 0.5;
+      }
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // ===== 窗口适配 =====
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>

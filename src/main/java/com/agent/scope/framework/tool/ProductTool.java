@@ -1,9 +1,8 @@
 package com.agent.scope.framework.tool;
 
-import com.agent.scope.framework.constant.BusinessConst;
 import com.agent.scope.framework.context.SessionContext;
+import com.agent.scope.framework.hdl.port.HdlApiPort;
 import com.agent.scope.framework.vo.ToolResultVO;
-import com.alibaba.fastjson2.JSONObject;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.tool.Tool;
 import io.agentscope.core.tool.ToolParam;
@@ -17,15 +16,6 @@ import org.springframework.stereotype.Component;
  * <p>封装 HDL 商城产品查询能力。用户询问产品详情、规格、配件、价格时，
  * LLM 通过本工具获取产品信息。</p>
  *
- * <p>支持按产品名关键词搜索。{@code query_product_detail} 内部自动检测：若 productId 非数字，
- * 先搜索产品名转为真实数字 ID 再查详情。</p>
- *
- * <p><b>提供的工具方法</b>：</p>
- * <ul>
- *   <li>{@code searchProduct}：按产品名搜索产品列表</li>
- *   <li>{@code queryProductDetail}：查询产品详情（自动处理产品名→ID）</li>
- * </ul>
- *
  * @author zqs
  * @since 2.0.0
  */
@@ -34,11 +24,11 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class ProductTool extends AbstractTool {
 
+    /** HDL 业务 API 端口 */
+    private final HdlApiPort hdlApiPort;
+
     /**
      * 搜索产品列表。
-     *
-     * <p>按产品名关键词搜索，返回匹配的产品列表。
-     * LLM 在用户说产品名（如"方悦"、"调光灯"）但不知道 productId 时调用此工具。</p>
      *
      * @param productName    产品名称或关键词
      * @param runtimeContext 运行时上下文（自动注入）
@@ -57,14 +47,33 @@ public class ProductTool extends AbstractTool {
             RuntimeContext runtimeContext) {
 
         SessionContext sessionContext = resolveSessionContext(runtimeContext);
-        log.info("[ProductTool] 搜索产品: sessionContext={}", JSONObject.toJSONString(sessionContext));
-        ToolResultVO toolResultVO = new ToolResultVO();
-        toolResultVO.setSuccess(true);
-        toolResultVO.setMessage(BusinessConst.MSG_QUERY_PRODUCT_SUCCESS);
-        toolResultVO.setData(JSONObject.parseObject("{\"code\":0,\"data\":[{\"productId\":\"1\",\"productName\":\"方悦\",\"price\":\"￥1.00\",\"skuId\":\"1\"}],\"message\":\"成功\"}"));
-        toolResultVO.setRoutePath(ToolResultVO.ROUTE_TEXT_ONLY);
-        toolResultVO.setBroadcastText(BusinessConst.MSG_QUERY_PRODUCT_SUCCESS);
-        toolResultVO.setAskUser(BusinessConst.MSG_QUERY_PRODUCT_SUCCESS);
-        return toolResultVO;
+        log.info("[ProductTool] 搜索产品: productName={}, userId={}",
+                productName, sessionContext.getUserId());
+        return hdlApiPort.searchProductList(productName, sessionContext);
+    }
+
+    /**
+     * 查询产品详情。
+     *
+     * @param productId      产品 ID 或产品名
+     * @param runtimeContext 运行时上下文（自动注入）
+     * @return 工具结果 VO（data 为产品详情 JSON）
+     */
+    @Tool(name = "query_product_detail",
+            description = "查询 HDL 商城单个产品详情。传入产品 ID 或产品名均可。若传入产品名（如'方悦'），系统自动搜索并转换为真实 productId 后查询详情。返回产品名称、SKU 品号列表（含规格）、配件列表、产品参数等。"
+                    + "使用场景：用户明确询问某个具体产品的详细规格、配件清单、技术参数时调用（需已知 productId 或产品名）。"
+                    + "注意：产品价格查询请用 search_product 工具（返回列表含价格），不要用本工具。"
+                    + "参数来源要求：productId 优先从 search_product 返回结果获取，也可直接传入产品名由系统自动转换。"
+                    + "禁止事项：禁止编造 skuId，加入购物车所需的 skuId 必须来自本工具返回的 skuList。",
+            readOnly = true)
+    public ToolResultVO queryProductDetail(
+            @ToolParam(name = "productId", required = true,
+                    description = "产品ID。示例：12345。数字ID或中文名均可，从search_product返回结果获取") String productId,
+            RuntimeContext runtimeContext) {
+
+        SessionContext sessionContext = resolveSessionContext(runtimeContext);
+        log.info("[ProductTool] 查询产品详情: productId={}, userId={}",
+                productId, sessionContext.getUserId());
+        return hdlApiPort.queryProductDetail(productId, sessionContext);
     }
 }

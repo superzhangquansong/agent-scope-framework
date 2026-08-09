@@ -15,6 +15,7 @@ import com.agent.scope.framework.exception.ErrorCode;
 import com.agent.scope.framework.exception.PermissionException;
 import com.agent.scope.framework.handler.AgentEventHandlerRegistry;
 import com.agent.scope.framework.handler.EventContext;
+import com.agent.scope.framework.hdl.ImageInfo;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.event.AgentEndEvent;
@@ -549,6 +550,7 @@ public class ChatService {
                     .houseId(houseId)
                     .sessionId(sessionId)
                     .accessToken(accessToken)
+                    .images(convertToImageInfos(dto))
                     .build();
 
             // 构建 RuntimeContext，预注入 SessionContext
@@ -720,7 +722,7 @@ public class ChatService {
                                 .sessionId(sessionId)
                                 .toolCalls(pending)
                                 .build();
-                emitter.send(SseEmitter.event().data(toJson(eventBO)));
+                emitter.send(SseEmitter.event().name(AgentEventEnum.PERMISSION_ASK.getDesc()).data(toJson(eventBO)));
 
                 sendEvent(emitter, SSE_EVENT_PERMISSION_PAUSED, sessionId, Map.of(
                         "message", MSG_ASKING_RESIDUAL));
@@ -829,6 +831,36 @@ public class ChatService {
         return builder.build();
     }
 
+    /**
+     * 将 ChatStreamDTO 中的图片列表转换为 ImageInfo 列表。
+     *
+     * <p>供 FloorPlanTool 等需要图片的工具使用。图片数据从会话上下文获取，
+     * 工具方法无需通过 @ToolParam 传递大量 Base64 数据。</p>
+     *
+     * @param dto 聊天请求 DTO
+     * @return ImageInfo 列表；无图片时返回 null
+     */
+    private List<ImageInfo> convertToImageInfos(ChatStreamDTO dto) {
+        List<String> images = dto.getImages();
+        if (images == null || images.isEmpty()) {
+            return null;
+        }
+        boolean isBase64 = ImageTypeEnum.BASE64.equals(dto.getImageType());
+        List<ImageInfo> result = new ArrayList<>(images.size());
+        for (String img : images) {
+            if (img == null || img.isBlank()) {
+                continue;
+            }
+            ImageInfo info = ImageInfo.builder()
+                    .base64(isBase64 ? img : null)
+                    .mimeType("image/png")
+                    .fileName(isBase64 ? null : img)
+                    .build();
+            result.add(info);
+        }
+        return result.isEmpty() ? null : result;
+    }
+
     private Msg buildUserMessage(ChatStreamDTO dto) {
         String userMessage = dto.getUserMessage();
         List<String> images = dto.getImages();
@@ -919,7 +951,7 @@ public class ChatService {
                     .sessionId(sessionId)
                     .eventType(event.getType() != null ? event.getType().name() : "UNKNOWN")
                     .build();
-            emitter.send(SseEmitter.event().data(toJson(eventBO)));
+            emitter.send(SseEmitter.event().name(eventBO.getType()).data(toJson(eventBO)));
         }
 
         if (event instanceof AgentEndEvent) {
@@ -952,7 +984,7 @@ public class ChatService {
         }
 
         String json = toJson(event);
-        emitter.send(SseEmitter.event().data(json));
+        emitter.send(SseEmitter.event().name(type).data(json));
         log.debug("[SSE] 发送事件: type={}, sessionId={}", type, sessionId);
     }
 
@@ -963,7 +995,7 @@ public class ChatService {
      */
     private void sendDone(SseEmitter emitter) {
         try {
-            emitter.send(SseEmitter.event().data("[DONE]"));
+            emitter.send(SseEmitter.event().name("done").data("[DONE]"));
         } catch (IOException e) {
             log.warn("[SSE] 发送 [DONE] 失败: {}", e.getMessage());
         }

@@ -221,6 +221,38 @@ public interface BusinessConst {
             ".csv"
     );
 
+    // ==================== 文件系统工具常量 ====================
+
+    /** 文件操作成功消息：读取 */
+    String MSG_FILE_READ_SUCCESS = "文件读取成功";
+    /** 文件操作成功消息：写入 */
+    String MSG_FILE_WRITE_SUCCESS = "文件写入成功";
+    /** 文件操作成功消息：列出目录 */
+    String MSG_FILE_LIST_SUCCESS = "目录列出成功";
+    /** 文件操作失败消息：工作区未启用 */
+    String MSG_FILE_WORKSPACE_NOT_ENABLED = "工作区未启用，文件操作不可用";
+    /** 文件操作失败消息：文件不存在 */
+    String MSG_FILE_NOT_FOUND = "文件不存在";
+    /** 文件操作失败消息：目录不存在 */
+    String MSG_FILE_DIR_NOT_FOUND = "目录不存在";
+    /** 文件操作路由：通用结果页 */
+    String ROUTE_FILE_RESULT = "/result/generic";
+
+    // ==================== 户型图工具常量 ====================
+
+    /** 户型图分析成功消息 */
+    String MSG_FLOOR_PLAN_SUCCESS = "户型图分析完成";
+    /** 户型图分析失败消息：无图片 */
+    String MSG_FLOOR_PLAN_NO_IMAGE = "未检测到户型图图片，请先上传户型图后再发送需求";
+    /** 户型图分析路由 */
+    String ROUTE_FLOOR_PLAN_RESULT = "/floor-plan/result";
+    /** 户型图分析失败消息：功能未配置 */
+    String MSG_FLOOR_PLAN_NOT_CONFIGURED = "户型图分析功能尚未配置";
+    /** 错误码：参数缺失 */
+    int CODE_PARAM_MISSING = 400;
+    /** 错误码：功能未实现 */
+    int CODE_NOT_IMPLEMENTED = 501;
+
     // ==================== Channel 通信常量（特性24）====================
 
     /** Feishu 渠道平台标识 */

@@ -1,0 +1,1634 @@
+{
+  "_comment": "HDL SPK 物模型 schema 配置。来源：hdl-llm-platform/hdl-model-center/smart-home-model/data/spk/*.md。每个 spk 含 attributes 数组，每个 attribute 含 key/desc/type(枚举 enum/数值 number/布尔 bool/颜色 color/字符串 string)/access(R/W/WR)/单位/最小/最大/步进/枚举值/中文别名(用于自然语言解析)",
+  "_alias_format": "aliases 数组是该属性在自然语言中的中文表达，AttributeParser 据此把用户输入映射成 key:value",
+
+  "schemas": {
+    "light.switch": {
+      "name": "开关灯",
+      "aliases": ["开关灯", "开关"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "打开", "关闭", "开启", "关掉", "停止"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "delay", "desc": "延时", "type": "number", "access": "WR", "unit": "s", "min": 0, "max": 3600, "step": 1, "aliases": ["延时", "延迟", "定时"]}
+      ]
+    },
+
+    "light.dimming": {
+      "name": "调光灯",
+      "aliases": ["调光灯", "调光", "可调光"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "打开", "关闭"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "brightness", "desc": "亮度", "type": "number", "access": "WR", "unit": "%", "min": 0, "max": 100, "step": 1, "aliases": ["亮度", "调亮", "调暗", "调光"]},
+        {"key": "fade_time", "desc": "渐变时间", "type": "number", "access": "WR", "unit": "s", "min": 0, "max": 100, "step": 1, "aliases": ["渐变", "渐变时间"]},
+        {"key": "delay", "desc": "延时", "type": "number", "access": "WR", "unit": "s", "min": 0, "max": 3600, "step": 1, "aliases": ["延时", "延迟"]}
+      ]
+    },
+
+    "light.rgb": {
+      "name": "RGB炫彩灯",
+      "aliases": ["RGB灯", "炫彩灯", "彩灯"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "打开", "关闭"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "brightness", "desc": "亮度", "type": "number", "access": "WR", "unit": "%", "min": 0, "max": 100, "step": 1, "aliases": ["亮度", "调亮", "调暗"]},
+        {"key": "rgb", "desc": "RGB颜色", "type": "color", "access": "WR", "format": "r,g,b", "aliases": ["颜色", "红色", "绿色", "蓝色", "黄色", "白色", "紫色", "橙色", "暖黄", "暖色", "冷色", "彩色"]},
+        {"key": "colorful", "desc": "自动炫彩", "type": "enum", "access": "WR", "aliases": ["炫彩", "自动炫彩", "彩色循环"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "delay", "desc": "延时", "type": "number", "access": "WR", "unit": "s", "min": 0, "max": 3600, "step": 1, "aliases": ["延时"]}
+      ]
+    },
+
+    "light.cct": {
+      "name": "色温灯",
+      "aliases": ["色温灯", "冷暖灯"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "打开", "关闭"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "brightness", "desc": "亮度", "type": "number", "access": "WR", "unit": "%", "min": 0, "max": 100, "step": 1, "aliases": ["亮度", "调亮", "调暗"]},
+        {"key": "cct", "desc": "色温", "type": "number", "access": "WR", "unit": "K", "min": 0, "max": 65535, "step": 1, "aliases": ["色温", "暖光", "冷光", "暖白", "冷白", "暖色", "冷色"]},
+        {"key": "delay", "desc": "延时", "type": "number", "access": "WR", "unit": "s", "min": 0, "max": 3600, "step": 1, "aliases": ["延时"]}
+      ]
+    },
+
+    "light.rgbw": {
+      "name": "RGBW灯",
+      "aliases": ["RGBW灯"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "brightness", "desc": "亮度", "type": "number", "access": "WR", "unit": "%", "min": 0, "max": 100, "step": 1, "aliases": ["亮度"]},
+        {"key": "rgbw", "desc": "RGBW颜色", "type": "color", "access": "WR", "format": "r,g,b,w", "aliases": ["颜色", "红色", "绿色", "蓝色", "白色"]},
+        {"key": "mode", "desc": "模式", "type": "enum", "access": "WR", "aliases": ["模式", "色温模式", "彩光模式"], "enumerations": [{"value": "cct", "desc": "色温"}, {"value": "rgbw", "desc": "彩光"}]},
+        {"key": "cct", "desc": "色温", "type": "number", "access": "WR", "unit": "K", "min": 0, "max": 65535, "step": 1, "aliases": ["色温", "暖光", "冷光"]}
+      ]
+    },
+
+    "light.rgbcw": {
+      "name": "RGBCW灯",
+      "aliases": ["RGBCW灯", "五色灯"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "brightness", "desc": "亮度", "type": "number", "access": "WR", "unit": "%", "min": 0, "max": 100, "step": 1, "aliases": ["亮度"]},
+        {"key": "rgbcw", "desc": "RGBCW颜色", "type": "color", "access": "WR", "format": "r,g,b,c,w", "aliases": ["颜色"]},
+        {"key": "cct", "desc": "色温", "type": "number", "access": "WR", "unit": "K", "min": 0, "max": 65535, "step": 1, "aliases": ["色温", "暖光", "冷光"]},
+        {"key": "mode", "desc": "模式", "type": "enum", "access": "WR", "aliases": ["模式"], "enumerations": [{"value": "cct", "desc": "色温"}, {"value": "rgbcw", "desc": "彩光"}]}
+      ]
+    },
+
+    "light.xy": {
+      "name": "XY灯",
+      "aliases": ["XY灯", "坐标灯"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "brightness", "desc": "亮度", "type": "number", "access": "WR", "unit": "%", "min": 0, "max": 100, "step": 1, "aliases": ["亮度"]},
+        {"key": "xy", "desc": "XY坐标", "type": "string", "access": "WR", "aliases": ["坐标", "XY"]}
+      ]
+    },
+
+    "hvac.ac": {
+      "name": "空调",
+      "aliases": ["空调", "中央空调", "分体空调"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "打开", "关闭"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "mode", "desc": "模式", "type": "enum", "access": "WR", "aliases": ["模式", "制冷", "制热", "送风", "自动", "除湿", "睡眠"], "enumerations": [{"value": "cool", "desc": "制冷"}, {"value": "heat", "desc": "制热"}, {"value": "fan", "desc": "送风"}, {"value": "auto", "desc": "自动"}, {"value": "dry", "desc": "除湿"}, {"value": "sleep", "desc": "睡眠"}, {"value": "c_1", "desc": "自定义1"}, {"value": "c_2", "desc": "自定义2"}, {"value": "c_3", "desc": "自定义3"}]},
+        {"key": "fan_speed", "desc": "风速", "type": "enum", "access": "WR", "aliases": ["风速", "风量", "风力", "高档", "中档", "低档", "自动档", "更低", "更高"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "medium", "desc": "中"}, {"value": "low", "desc": "低"}, {"value": "auto", "desc": "自动"}, {"value": "lower", "desc": "更低"}, {"value": "higher", "desc": "更高"}, {"value": "c_1", "desc": "自定义1"}, {"value": "c_2", "desc": "自定义2"}, {"value": "c_3", "desc": "自定义3"}]},
+        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 16, "max": 32, "step": 1, "aliases": ["温度", "设定温度", "调到", "设为"]},
+        {"key": "current_temp", "desc": "当前温度", "type": "number", "access": "R", "unit": "℃", "aliases": ["当前温度", "室温"]}
+      ]
+    },
+
+    "hvac.ac_panel": {
+      "name": "空调面板",
+      "aliases": ["空调面板", "温控面板"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "mode", "desc": "模式", "type": "enum", "access": "WR", "aliases": ["模式", "制冷", "制热"], "enumerations": [{"value": "cool", "desc": "制冷"}, {"value": "heat", "desc": "制热"}, {"value": "fan", "desc": "送风"}, {"value": "auto", "desc": "自动"}]},
+        {"key": "fan_speed", "desc": "风速", "type": "enum", "access": "WR", "aliases": ["风速", "风量"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "medium", "desc": "中"}, {"value": "low", "desc": "低"}, {"value": "auto", "desc": "自动"}]},
+        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 16, "max": 32, "step": 1, "aliases": ["温度", "设定温度"]}
+      ]
+    },
+
+    "hvac.fan": {
+      "name": "电风扇",
+      "aliases": ["风扇", "电风扇", "吊扇"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "fan_speed", "desc": "风速", "type": "enum", "access": "WR", "aliases": ["风速", "档位", "1档", "2档", "3档"], "enumerations": [{"value": "1", "desc": "1档"}, {"value": "2", "desc": "2档"}, {"value": "3", "desc": "3档"}, {"value": "auto", "desc": "自动"}]},
+        {"key": "mode", "desc": "模式", "type": "enum", "access": "WR", "aliases": ["模式", "自然风", "睡眠风", "正常"], "enumerations": [{"value": "normal", "desc": "正常"}, {"value": "natural", "desc": "自然风"}, {"value": "sleep", "desc": "睡眠风"}]},
+        {"key": "oscillate", "desc": "摆风", "type": "enum", "access": "WR", "aliases": ["摆风", "摇头", "扫风"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]}
+      ]
+    },
+
+    "hvac.floorHeat": {
+      "name": "地热",
+      "aliases": ["地热", "地暖", "地板采暖"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 5, "max": 45, "step": 1, "aliases": ["温度", "设定温度"]}
+      ]
+    },
+
+    "hvac.airFresh": {
+      "name": "新风",
+      "aliases": ["新风", "新风系统", "新鲜空气"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "fan_speed", "desc": "风速", "type": "enum", "access": "WR", "aliases": ["风速", "风量"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "medium", "desc": "中"}, {"value": "low", "desc": "低"}, {"value": "auto", "desc": "自动"}]},
+        {"key": "mode", "desc": "模式", "type": "enum", "access": "WR", "aliases": ["模式", "换气", "排风", "进风"], "enumerations": [{"value": "ventilation", "desc": "换气"}, {"value": "exhaust", "desc": "排风"}, {"value": "intake", "desc": "进风"}]}
+      ]
+    },
+
+    "curtain.roller": {
+      "name": "卷帘",
+      "aliases": ["卷帘", "卷窗帘", "电动卷帘"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "打开", "关闭", "停止"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}, {"value": "stop", "desc": "停"}]},
+        {"key": "position", "desc": "位置", "type": "number", "access": "WR", "unit": "%", "min": 0, "max": 100, "step": 1, "aliases": ["位置", "开度", "打开到", "开到", "一半", "全开", "全关"]}
+      ]
+    },
+
+    "curtain.shades": {
+      "name": "百叶帘",
+      "aliases": ["百叶帘", "百叶窗", "百叶"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "停止"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}, {"value": "stop", "desc": "停"}]},
+        {"key": "position", "desc": "位置", "type": "number", "access": "WR", "unit": "%", "min": 0, "max": 100, "step": 1, "aliases": ["位置", "开度", "开到"]},
+        {"key": "angle", "desc": "角度", "type": "number", "access": "WR", "unit": "°", "min": -360, "max": 180, "step": 1, "aliases": ["角度", "叶片角度", "翻转"]}
+      ]
+    },
+
+    "curtain.trietex.norm": {
+      "name": "开合帘",
+      "aliases": ["开合帘", "窗帘", "布帘"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "打开", "关闭", "拉开", "拉上", "停止"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}, {"value": "stop", "desc": "停"}]},
+        {"key": "position", "desc": "位置", "type": "number", "access": "WR", "unit": "%", "min": 0, "max": 100, "step": 1, "aliases": ["位置", "开度", "开到", "一半"]}
+      ]
+    },
+
+    "curtain.dream": {
+      "name": "梦幻窗帘",
+      "aliases": ["梦幻帘", "梦幻窗帘", "柔纱帘"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "position", "desc": "位置", "type": "number", "access": "WR", "unit": "%", "min": 0, "max": 100, "step": 1, "aliases": ["位置", "开度"]},
+        {"key": "angle", "desc": "角度", "type": "number", "access": "WR", "unit": "°", "min": -360, "max": 180, "step": 1, "aliases": ["角度", "翻转"]}
+      ]
+    },
+
+    "av.music": {
+      "name": "音乐",
+      "aliases": ["音乐", "背景音乐", "音响"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "播放", "停止"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "volume", "desc": "音量", "type": "number", "access": "WR", "unit": "%", "min": 0, "max": 100, "step": 1, "aliases": ["音量", "音量大", "音量小", "大声", "小声"]},
+        {"key": "play_mode", "desc": "播放模式", "type": "enum", "access": "WR", "aliases": ["播放模式", "顺序播放", "随机播放", "单曲循环"], "enumerations": [{"value": "sequence", "desc": "顺序"}, {"value": "random", "desc": "随机"}, {"value": "single", "desc": "单曲循环"}]},
+        {"key": "source", "desc": "音源", "type": "enum", "access": "WR", "aliases": ["音源", "蓝牙", "AUX", "USB", "网络"], "enumerations": [{"value": "bluetooth", "desc": "蓝牙"}, {"value": "aux", "desc": "AUX"}, {"value": "usb", "desc": "USB"}, {"value": "network", "desc": "网络"}]}
+      ]
+    },
+
+    "av.screen.roller": {
+      "name": "投影幕布",
+      "aliases": ["幕布", "投影幕", "电动幕"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "升起", "降下"], "enumerations": [{"value": "on", "desc": "降下"}, {"value": "off", "desc": "升起"}]},
+        {"key": "position", "desc": "位置", "type": "number", "access": "WR", "unit": "%", "min": 0, "max": 100, "step": 1, "aliases": ["位置", "开度"]}
+      ]
+    },
+
+    "panel.socket": {
+      "name": "面板插座",
+      "aliases": ["插座", "面板插座", "智能插座"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "打开", "关闭", "通电", "断电"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]}
+      ]
+    },
+
+    "electrical.racks": {
+      "name": "晾霸",
+      "aliases": ["晾衣架", "晾霸", "电动晾衣架"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "position", "desc": "位置", "type": "number", "access": "WR", "unit": "%", "min": 0, "max": 100, "step": 1, "aliases": ["位置", "升高", "降低", "上升", "下降"]},
+        {"key": "light", "desc": "照明", "type": "enum", "access": "WR", "aliases": ["灯", "照明", "灯光"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "uv", "desc": "紫外线杀菌", "type": "enum", "access": "WR", "aliases": ["紫外线", "杀菌", "消毒"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "wind", "desc": "风干", "type": "enum", "access": "WR", "aliases": ["风干", "吹风"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]}
+      ]
+    },
+
+    "electrical.breaker": {
+      "name": "空气开关",
+      "aliases": ["空开", "空气开关", "断路器"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "合闸", "分闸"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]}
+      ]
+    },
+
+    "ir.tv": {
+      "name": "电视(红外)",
+      "aliases": ["电视", "红外电视"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "打开", "关闭"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "volume_up", "desc": "音量+", "type": "enum", "access": "W", "aliases": ["音量大", "调大音量", "声音大"], "enumerations": [{"value": "on", "desc": "按下"}]},
+        {"key": "volume_down", "desc": "音量-", "type": "enum", "access": "W", "aliases": ["音量小", "调小音量", "声音小"], "enumerations": [{"value": "on", "desc": "按下"}]},
+        {"key": "mute", "desc": "静音", "type": "enum", "access": "W", "aliases": ["静音", "取消静音"], "enumerations": [{"value": "on", "desc": "按下"}]},
+        {"key": "ok", "desc": "确认", "type": "enum", "access": "W", "aliases": ["确认", "OK"], "enumerations": [{"value": "on", "desc": "按下"}]},
+        {"key": "channel_up", "desc": "频道+", "type": "enum", "access": "W", "aliases": ["上一个台", "换台"], "enumerations": [{"value": "on", "desc": "按下"}]},
+        {"key": "channel_down", "desc": "频道-", "type": "enum", "access": "W", "aliases": ["下一个台", "换台"], "enumerations": [{"value": "on", "desc": "按下"}]}
+      ]
+    },
+
+    "ir.ac": {
+      "name": "空调(红外)",
+      "aliases": ["空调", "红外空调"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "mode", "desc": "模式", "type": "enum", "access": "WR", "aliases": ["模式", "制冷", "制热", "送风", "自动", "除湿"], "enumerations": [{"value": "cool", "desc": "制冷"}, {"value": "heat", "desc": "制热"}, {"value": "fan", "desc": "送风"}, {"value": "auto", "desc": "自动"}, {"value": "dry", "desc": "除湿"}]},
+        {"key": "fan", "desc": "风速", "type": "enum", "access": "WR", "aliases": ["风速", "风量", "高档", "中档", "低档"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "medium", "desc": "中"}, {"value": "low", "desc": "低"}, {"value": "auto", "desc": "自动"}]},
+        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 0, "max": 30, "step": 1, "aliases": ["温度", "设定温度"]}
+      ]
+    },
+
+    "ir.fan": {
+      "name": "风扇(红外)",
+      "aliases": ["风扇", "红外风扇"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "speed", "desc": "风速", "type": "enum", "access": "WR", "aliases": ["风速", "档位", "低速", "中速", "高速"], "enumerations": [{"value": "low", "desc": "低"}, {"value": "middle", "desc": "中"}, {"value": "high", "desc": "高"}]},
+        {"key": "mode", "desc": "模式", "type": "enum", "access": "WR", "aliases": ["模式", "睡眠", "自然风"], "enumerations": [{"value": "sleep", "desc": "睡眠"}, {"value": "nature", "desc": "自然风"}, {"value": "fan", "desc": "正常"}]},
+        {"key": "swing", "desc": "摆风", "type": "enum", "access": "WR", "aliases": ["摆风", "摇头"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]}
+      ]
+    },
+
+    "sensor.temperature": {
+      "name": "温度传感器",
+      "aliases": ["温度传感器", "温度计"],
+      "attributes": [
+        {"key": "temperature", "desc": "温度", "type": "number", "access": "R", "unit": "℃", "aliases": ["温度", "室温", "当前温度"]},
+        {"key": "battery_percentage", "desc": "电池电量", "type": "number", "access": "R", "unit": "%", "min": 0, "max": 100, "aliases": ["电量", "电池"]},
+        {"key": "enable", "desc": "使能", "type": "enum", "access": "WR", "aliases": ["使能", "启用", "禁用"], "enumerations": [{"value": "true", "desc": "启用"}, {"value": "false", "desc": "禁用"}]},
+        {"key": "battery_value", "desc": "电池量", "type": "number", "access": "R", "aliases": ["电池量", "电池"]},
+        {"key": "battery_state", "desc": "电量状态", "type": "enum", "access": "R", "aliases": ["电量状态"], "enumerations": [{"value": "low", "desc": "低"}, {"value": "middle", "desc": "中"}, {"value": "high", "desc": "高"}]},
+        {"key": "sensitivity", "desc": "灵敏度", "type": "enum", "access": "WR", "aliases": ["灵敏度"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "middle", "desc": "中"}, {"value": "low", "desc": "低"}]}
+      ]
+    },
+
+    "sensor.humidity": {
+      "name": "湿度传感器",
+      "aliases": ["湿度传感器", "湿度计"],
+      "attributes": [
+        {"key": "humidity", "desc": "湿度", "type": "number", "access": "R", "unit": "%", "min": 0, "max": 100, "aliases": ["湿度", "当前湿度"]},
+        {"key": "battery_percentage", "desc": "电池电量", "type": "number", "access": "R", "unit": "%", "min": 0, "max": 100, "aliases": ["电量"]},
+        {"key": "enable", "desc": "使能", "type": "enum", "access": "WR", "aliases": ["使能", "启用", "禁用"], "enumerations": [{"value": "true", "desc": "启用"}, {"value": "false", "desc": "禁用"}]},
+        {"key": "battery_value", "desc": "电池量", "type": "number", "access": "R", "aliases": ["电池量", "电池"]},
+        {"key": "battery_state", "desc": "电量状态", "type": "enum", "access": "R", "aliases": ["电量状态"], "enumerations": [{"value": "low", "desc": "低"}, {"value": "middle", "desc": "中"}, {"value": "high", "desc": "高"}]},
+        {"key": "sensitivity", "desc": "灵敏度", "type": "enum", "access": "WR", "aliases": ["灵敏度"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "middle", "desc": "中"}, {"value": "low", "desc": "低"}]}
+      ]
+    },
+
+    "sensor.pm25": {
+      "name": "PM2.5传感器",
+      "aliases": ["PM2.5", "PM2.5传感器"],
+      "attributes": [
+        {"key": "pm25", "desc": "PM2.5", "type": "number", "access": "R", "unit": "μg/m³", "aliases": ["PM2.5", "细颗粒物"]},
+        {"key": "battery_percentage", "desc": "电池电量", "type": "number", "access": "R", "unit": "%", "aliases": ["电量"]},
+        {"key": "enable", "desc": "使能", "type": "enum", "access": "WR", "aliases": ["使能", "启用", "禁用"], "enumerations": [{"value": "true", "desc": "启用"}, {"value": "false", "desc": "禁用"}]},
+        {"key": "battery_value", "desc": "电池量", "type": "number", "access": "R", "aliases": ["电池量", "电池"]},
+        {"key": "battery_state", "desc": "电量状态", "type": "enum", "access": "R", "aliases": ["电量状态"], "enumerations": [{"value": "low", "desc": "低"}, {"value": "middle", "desc": "中"}, {"value": "high", "desc": "高"}]},
+        {"key": "sensitivity", "desc": "灵敏度", "type": "enum", "access": "WR", "aliases": ["灵敏度"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "middle", "desc": "中"}, {"value": "low", "desc": "低"}]}
+      ]
+    },
+
+    "sensor.co2": {
+      "name": "二氧化碳传感器",
+      "aliases": ["二氧化碳", "CO2传感器"],
+      "attributes": [
+        {"key": "co2", "desc": "二氧化碳浓度", "type": "number", "access": "R", "unit": "ppm", "aliases": ["二氧化碳", "CO2"]},
+        {"key": "battery_percentage", "desc": "电池电量", "type": "number", "access": "R", "unit": "%", "aliases": ["电量"]},
+        {"key": "enable", "desc": "使能", "type": "enum", "access": "WR", "aliases": ["使能", "启用", "禁用"], "enumerations": [{"value": "true", "desc": "启用"}, {"value": "false", "desc": "禁用"}]},
+        {"key": "battery_value", "desc": "电池量", "type": "number", "access": "R", "aliases": ["电池量", "电池"]},
+        {"key": "battery_state", "desc": "电量状态", "type": "enum", "access": "R", "aliases": ["电量状态"], "enumerations": [{"value": "low", "desc": "低"}, {"value": "middle", "desc": "中"}, {"value": "high", "desc": "高"}]},
+        {"key": "sensitivity", "desc": "灵敏度", "type": "enum", "access": "WR", "aliases": ["灵敏度"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "middle", "desc": "中"}, {"value": "low", "desc": "低"}]}
+      ]
+    },
+
+    "sensor.pir": {
+      "name": "人体感应",
+      "aliases": ["人体感应", "移动传感器", "PIR", "红外人体"],
+      "attributes": [
+        {"key": "pir", "desc": "有人/无人", "type": "enum", "access": "R", "aliases": ["有人", "无人", "人体"], "enumerations": [{"value": "on", "desc": "有人"}, {"value": "off", "desc": "无人"}]},
+        {"key": "battery_percentage", "desc": "电池电量", "type": "number", "access": "R", "unit": "%", "aliases": ["电量"]},
+        {"key": "enable", "desc": "使能", "type": "enum", "access": "WR", "aliases": ["使能", "启用", "禁用"], "enumerations": [{"value": "true", "desc": "启用"}, {"value": "false", "desc": "禁用"}]},
+        {"key": "battery_value", "desc": "电池量", "type": "number", "access": "R", "aliases": ["电池量", "电池"]},
+        {"key": "battery_state", "desc": "电量状态", "type": "enum", "access": "R", "aliases": ["电量状态"], "enumerations": [{"value": "low", "desc": "低"}, {"value": "middle", "desc": "中"}, {"value": "high", "desc": "高"}]},
+        {"key": "sensitivity", "desc": "灵敏度", "type": "enum", "access": "WR", "aliases": ["灵敏度"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "middle", "desc": "中"}, {"value": "low", "desc": "低"}]}
+      ]
+    },
+
+    "sensor.smoke": {
+      "name": "烟雾传感器",
+      "aliases": ["烟雾", "烟雾报警器", "烟感"],
+      "attributes": [
+        {"key": "smoke_alarm", "desc": "烟雾报警", "type": "enum", "access": "R", "aliases": ["烟雾报警", "报警"], "enumerations": [{"value": "on", "desc": "报警"}, {"value": "off", "desc": "正常"}]},
+        {"key": "battery_percentage", "desc": "电池电量", "type": "number", "access": "R", "unit": "%", "aliases": ["电量"]},
+        {"key": "enable", "desc": "使能", "type": "enum", "access": "WR", "aliases": ["使能", "启用", "禁用"], "enumerations": [{"value": "true", "desc": "启用"}, {"value": "false", "desc": "禁用"}]},
+        {"key": "battery_value", "desc": "电池量", "type": "number", "access": "R", "aliases": ["电池量", "电池"]},
+        {"key": "battery_state", "desc": "电量状态", "type": "enum", "access": "R", "aliases": ["电量状态"], "enumerations": [{"value": "low", "desc": "低"}, {"value": "middle", "desc": "中"}, {"value": "high", "desc": "高"}]},
+        {"key": "sensitivity", "desc": "灵敏度", "type": "enum", "access": "WR", "aliases": ["灵敏度"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "middle", "desc": "中"}, {"value": "low", "desc": "低"}]}
+      ]
+    },
+
+    "sensor.gas": {
+      "name": "燃气传感器",
+      "aliases": ["燃气", "燃气报警器", "可燃气体"],
+      "attributes": [
+        {"key": "gas_alarm", "desc": "燃气报警", "type": "enum", "access": "R", "aliases": ["燃气报警", "报警"], "enumerations": [{"value": "on", "desc": "报警"}, {"value": "off", "desc": "正常"}]},
+        {"key": "battery_percentage", "desc": "电池电量", "type": "number", "access": "R", "unit": "%", "aliases": ["电量"]},
+        {"key": "enable", "desc": "使能", "type": "enum", "access": "WR", "aliases": ["使能", "启用", "禁用"], "enumerations": [{"value": "true", "desc": "启用"}, {"value": "false", "desc": "禁用"}]},
+        {"key": "battery_value", "desc": "电池量", "type": "number", "access": "R", "aliases": ["电池量", "电池"]},
+        {"key": "battery_state", "desc": "电量状态", "type": "enum", "access": "R", "aliases": ["电量状态"], "enumerations": [{"value": "low", "desc": "低"}, {"value": "middle", "desc": "中"}, {"value": "high", "desc": "高"}]},
+        {"key": "sensitivity", "desc": "灵敏度", "type": "enum", "access": "WR", "aliases": ["灵敏度"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "middle", "desc": "中"}, {"value": "low", "desc": "低"}]}
+      ]
+    },
+
+    "sensor.water": {
+      "name": "水浸传感器",
+      "aliases": ["水浸", "漏水", "水浸报警器"],
+      "attributes": [
+        {"key": "water_alarm", "desc": "水浸报警", "type": "enum", "access": "R", "aliases": ["水浸报警", "漏水报警"], "enumerations": [{"value": "on", "desc": "报警"}, {"value": "off", "desc": "正常"}]},
+        {"key": "battery_percentage", "desc": "电池电量", "type": "number", "access": "R", "unit": "%", "aliases": ["电量"]},
+        {"key": "enable", "desc": "使能", "type": "enum", "access": "WR", "aliases": ["使能", "启用", "禁用"], "enumerations": [{"value": "true", "desc": "启用"}, {"value": "false", "desc": "禁用"}]},
+        {"key": "battery_value", "desc": "电池量", "type": "number", "access": "R", "aliases": ["电池量", "电池"]},
+        {"key": "battery_state", "desc": "电量状态", "type": "enum", "access": "R", "aliases": ["电量状态"], "enumerations": [{"value": "low", "desc": "低"}, {"value": "middle", "desc": "中"}, {"value": "high", "desc": "高"}]},
+        {"key": "sensitivity", "desc": "灵敏度", "type": "enum", "access": "WR", "aliases": ["灵敏度"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "middle", "desc": "中"}, {"value": "low", "desc": "低"}]}
+      ]
+    },
+
+    "sensor.doorwindow": {
+      "name": "门磁传感器",
+      "aliases": ["门磁", "门窗传感器", "门磁传感器"],
+      "attributes": [
+        {"key": "door_status", "desc": "门窗状态", "type": "enum", "access": "R", "aliases": ["门状态", "开窗", "关门", "开门"], "enumerations": [{"value": "on", "desc": "打开"}, {"value": "off", "desc": "关闭"}]},
+        {"key": "battery_percentage", "desc": "电池电量", "type": "number", "access": "R", "unit": "%", "aliases": ["电量"]},
+        {"key": "enable", "desc": "使能", "type": "enum", "access": "WR", "aliases": ["使能", "启用", "禁用"], "enumerations": [{"value": "true", "desc": "启用"}, {"value": "false", "desc": "禁用"}]},
+        {"key": "battery_value", "desc": "电池量", "type": "number", "access": "R", "aliases": ["电池量", "电池"]},
+        {"key": "battery_state", "desc": "电量状态", "type": "enum", "access": "R", "aliases": ["电量状态"], "enumerations": [{"value": "low", "desc": "低"}, {"value": "middle", "desc": "中"}, {"value": "high", "desc": "高"}]},
+        {"key": "sensitivity", "desc": "灵敏度", "type": "enum", "access": "WR", "aliases": ["灵敏度"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "middle", "desc": "中"}, {"value": "low", "desc": "低"}]}
+      ]
+    },
+
+    "security.door": {
+      "name": "门锁",
+      "aliases": ["门锁", "智能门锁", "电子门锁"],
+      "attributes": [
+        {"key": "lock_state", "desc": "锁状态", "type": "enum", "access": "R", "aliases": ["锁状态", "已锁", "未锁", "开锁", "上锁"], "enumerations": [{"value": "locked", "desc": "已锁"}, {"value": "unlocked", "desc": "未锁"}]},
+        {"key": "battery_percentage", "desc": "电池电量", "type": "number", "access": "R", "unit": "%", "aliases": ["电量"]}
+      ]
+    },
+
+    "other.common": {
+      "name": "通用开关",
+      "aliases": ["通用开关", "开关"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "打开", "关闭"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]}
+      ]
+    },
+
+    "AGATEWAY": {
+      "name": "LINK网关",
+      "aliases": ["网关", "LINK网关"],
+      "attributes": [
+        {"key": "ip_addr", "desc": "IP地址", "type": "string", "access": "R", "aliases": ["IP", "IP地址"]},
+        {"key": "longitude", "desc": "经度", "type": "number", "access": "R", "aliases": ["经度"]},
+        {"key": "latitude", "desc": "纬度", "type": "number", "access": "R", "aliases": ["纬度"]}
+      ]
+    },
+
+    "light.rgbwaf": {
+      "name": "RGBWAF灯",
+      "aliases": ["RGBWAF灯", "六色灯"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "brightness", "desc": "亮度", "type": "number", "access": "WR", "unit": "%", "min": 0, "max": 100, "step": 1, "aliases": ["亮度"]},
+        {"key": "R", "desc": "红", "type": "number", "access": "WR", "min": 0, "max": 255, "step": 1, "aliases": ["红"]},
+        {"key": "G", "desc": "绿", "type": "number", "access": "WR", "min": 0, "max": 255, "step": 1, "aliases": ["绿"]},
+        {"key": "B", "desc": "蓝", "type": "number", "access": "WR", "min": 0, "max": 255, "step": 1, "aliases": ["蓝"]},
+        {"key": "W", "desc": "白", "type": "number", "access": "WR", "min": 0, "max": 255, "step": 1, "aliases": ["白"]},
+        {"key": "A", "desc": "琥珀", "type": "number", "access": "WR", "min": 0, "max": 255, "step": 1, "aliases": ["琥珀"]},
+        {"key": "F", "desc": "自由度", "type": "number", "access": "WR", "min": 0, "max": 255, "step": 1, "aliases": ["自由度"]}
+      ]
+    },
+
+    "light.sync.bwee": {
+      "name": "灯光同步器",
+      "aliases": ["灯光同步器", "榜威", "同步灯"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "brightness", "desc": "亮度", "type": "number", "access": "WR", "unit": "%", "min": 1, "max": 100, "step": 1, "aliases": ["亮度"]},
+        {"key": "mode", "desc": "模式", "type": "enum", "access": "WR", "aliases": ["模式", "视频", "音乐", "游戏"], "enumerations": [{"value": "0", "desc": "视频"}, {"value": "1", "desc": "音乐"}, {"value": "2", "desc": "游戏"}]},
+        {"key": "frequency", "desc": "频率", "type": "enum", "access": "WR", "aliases": ["频率", "低", "中", "高"], "enumerations": [{"value": "0", "desc": "低"}, {"value": "1", "desc": "中"}, {"value": "2", "desc": "高"}, {"value": "3", "desc": "最高"}]},
+        {"key": "source", "desc": "源", "type": "enum", "access": "WR", "aliases": ["源", "HDMI1", "HDMI2"], "enumerations": [{"value": "0", "desc": "HDMI1"}, {"value": "1", "desc": "HDMI2"}]}
+      ]
+    },
+
+    "hvac.cac": {
+      "name": "毛细管空调",
+      "aliases": ["毛细管空调", "毛细管", "毛细管网"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 16, "max": 32, "step": 1, "aliases": ["温度", "设定温度"]}
+      ]
+    },
+
+    "hvac.heat_pump.deye": {
+      "name": "热泵(德业)",
+      "aliases": ["热泵", "德业热泵"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "mode", "desc": "模式", "type": "enum", "access": "WR", "aliases": ["模式"], "enumerations": [{"value": "heat", "desc": "制热"}, {"value": "cool", "desc": "制冷"}]},
+        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 5, "max": 75, "step": 1, "aliases": ["温度"]}
+      ]
+    },
+
+    "hvac.thermostat.deye": {
+      "name": "恒温器(德业)",
+      "aliases": ["恒温器", "德业恒温器"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 5, "max": 60, "step": 1, "aliases": ["温度"]}
+      ]
+    },
+
+    "hvac.qing_luan": {
+      "name": "青鸾温控器",
+      "aliases": ["青鸾", "青鸾温控器", "温控器"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "mode", "desc": "模式", "type": "enum", "access": "WR", "aliases": ["模式", "制冷", "制热"], "enumerations": [{"value": "cool", "desc": "制冷"}, {"value": "heat", "desc": "制热"}]},
+        {"key": "fan_speed", "desc": "风速", "type": "enum", "access": "WR", "aliases": ["风速"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "medium", "desc": "中"}, {"value": "low", "desc": "低"}]},
+        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 16, "max": 32, "step": 1, "aliases": ["温度"]}
+      ]
+    },
+
+    "curtain.switch.norm": {
+      "name": "开关停窗帘",
+      "aliases": ["开关停窗帘", "开停窗帘"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "打开", "关闭"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}, {"value": "stop", "desc": "停"}]}
+      ]
+    },
+
+    "curtain.shades.xgll": {
+      "name": "香格里拉帘",
+      "aliases": ["香格里拉帘", "香格里拉", "柔纱帘"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "position", "desc": "位置", "type": "number", "access": "WR", "unit": "%", "min": 0, "max": 100, "step": 1, "aliases": ["位置", "开度"]},
+        {"key": "angle", "desc": "角度", "type": "number", "access": "WR", "unit": "°", "min": 0, "max": 180, "step": 1, "aliases": ["角度"]}
+      ]
+    },
+
+    "curtain.glass.switch": {
+      "name": "智能调光玻璃",
+      "aliases": ["调光玻璃", "智能玻璃", "雾化玻璃"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "透明", "雾化"], "enumerations": [{"value": "on", "desc": "透明"}, {"value": "off", "desc": "雾化"}]}
+      ]
+    },
+
+    "av.box.novastar": {
+      "name": "播控盒子(诺瓦)",
+      "aliases": ["播控盒子", "诺瓦", "播控"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "source", "desc": "源", "type": "enum", "access": "WR", "aliases": ["源", "HDMI", "USB"], "enumerations": [{"value": "hdmi", "desc": "HDMI"}, {"value": "usb", "desc": "USB"}]}
+      ]
+    },
+
+    "av.zk.aiks": {
+      "name": "埃克思影音中控",
+      "aliases": ["影音中控", "埃克思", "中控"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "volume", "desc": "音量", "type": "number", "access": "WR", "unit": "%", "min": 0, "max": 100, "step": 1, "aliases": ["音量"]}
+      ]
+    },
+
+    "panel.button": {
+      "name": "面板按键",
+      "aliases": ["面板按键", "按键面板", "按键"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]}
+      ]
+    },
+
+    "panel.common": {
+      "name": "通用面板",
+      "aliases": ["通用面板", "面板"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]}
+      ]
+    },
+
+    "screen.panel": {
+      "name": "触摸屏面板",
+      "aliases": ["触摸屏", "触摸面板", "屏"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "brightness", "desc": "亮度", "type": "number", "access": "WR", "unit": "%", "min": 0, "max": 100, "step": 1, "aliases": ["亮度"]}
+      ]
+    },
+
+    "screen.mirror": {
+      "name": "魔镜",
+      "aliases": ["魔镜", "智能镜", "浴室镜"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "brightness", "desc": "亮度", "type": "number", "access": "WR", "unit": "%", "min": 0, "max": 100, "step": 1, "aliases": ["亮度"]}
+      ]
+    },
+
+    "screen.yipanel": {
+      "name": "毅面板",
+      "aliases": ["毅面板", "毅屏"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]}
+      ]
+    },
+
+    "screen.touch": {
+      "name": "通用触摸屏",
+      "aliases": ["触摸屏", "智能屏", "人脸识别屏"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "brightness", "desc": "亮度", "type": "number", "access": "WR", "unit": "%", "min": 0, "max": 100, "step": 1, "aliases": ["亮度"]}
+      ]
+    },
+
+    "acst.parent": {
+      "name": "总控",
+      "aliases": ["总控", "空调科技总控"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]}
+      ]
+    },
+
+    "acst.sub": {
+      "name": "子控",
+      "aliases": ["子控", "空调科技子控"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]}
+      ]
+    },
+
+    "acst.ac": {
+      "name": "云服科技系统空调",
+      "aliases": ["云服空调", "科技系统空调"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "mode", "desc": "模式", "type": "enum", "access": "WR", "aliases": ["模式", "制冷", "制热"], "enumerations": [{"value": "cool", "desc": "制冷"}, {"value": "heat", "desc": "制热"}]},
+        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 16, "max": 32, "step": 1, "aliases": ["温度"]}
+      ]
+    },
+
+    "sensor.co": {
+      "name": "一氧化碳传感器",
+      "aliases": ["一氧化碳", "CO传感器", "CO"],
+      "attributes": [
+        {"key": "co", "desc": "一氧化碳浓度", "type": "number", "access": "R", "unit": "ppm", "aliases": ["一氧化碳", "CO"]},
+        {"key": "battery_percentage", "desc": "电池电量", "type": "number", "access": "R", "unit": "%", "min": 0, "max": 100, "aliases": ["电量"]},
+        {"key": "enable", "desc": "使能", "type": "enum", "access": "WR", "aliases": ["使能", "启用", "禁用"], "enumerations": [{"value": "true", "desc": "启用"}, {"value": "false", "desc": "禁用"}]},
+        {"key": "battery_value", "desc": "电池量", "type": "number", "access": "R", "aliases": ["电池量", "电池"]},
+        {"key": "battery_state", "desc": "电量状态", "type": "enum", "access": "R", "aliases": ["电量状态"], "enumerations": [{"value": "low", "desc": "低"}, {"value": "middle", "desc": "中"}, {"value": "high", "desc": "高"}]},
+        {"key": "sensitivity", "desc": "灵敏度", "type": "enum", "access": "WR", "aliases": ["灵敏度"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "middle", "desc": "中"}, {"value": "low", "desc": "低"}]}
+      ]
+    },
+
+    "sensor.pm10": {
+      "name": "PM10传感器",
+      "aliases": ["PM10", "PM10传感器"],
+      "attributes": [
+        {"key": "pm10", "desc": "PM10", "type": "number", "access": "R", "unit": "μg/m³", "aliases": ["PM10", "可吸入颗粒物"]},
+        {"key": "battery_percentage", "desc": "电池电量", "type": "number", "access": "R", "unit": "%", "aliases": ["电量"]},
+        {"key": "enable", "desc": "使能", "type": "enum", "access": "WR", "aliases": ["使能", "启用", "禁用"], "enumerations": [{"value": "true", "desc": "启用"}, {"value": "false", "desc": "禁用"}]},
+        {"key": "battery_value", "desc": "电池量", "type": "number", "access": "R", "aliases": ["电池量", "电池"]},
+        {"key": "battery_state", "desc": "电量状态", "type": "enum", "access": "R", "aliases": ["电量状态"], "enumerations": [{"value": "low", "desc": "低"}, {"value": "middle", "desc": "中"}, {"value": "high", "desc": "高"}]},
+        {"key": "sensitivity", "desc": "灵敏度", "type": "enum", "access": "WR", "aliases": ["灵敏度"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "middle", "desc": "中"}, {"value": "low", "desc": "低"}]}
+      ]
+    },
+
+    "sensor.pm1": {
+      "name": "PM1.0传感器",
+      "aliases": ["PM1", "PM1.0", "PM1.0传感器"],
+      "attributes": [
+        {"key": "pm1", "desc": "PM1.0", "type": "number", "access": "R", "unit": "μg/m³", "aliases": ["PM1", "PM1.0"]},
+        {"key": "battery_percentage", "desc": "电池电量", "type": "number", "access": "R", "unit": "%", "aliases": ["电量"]},
+        {"key": "enable", "desc": "使能", "type": "enum", "access": "WR", "aliases": ["使能", "启用", "禁用"], "enumerations": [{"value": "true", "desc": "启用"}, {"value": "false", "desc": "禁用"}]},
+        {"key": "battery_value", "desc": "电池量", "type": "number", "access": "R", "aliases": ["电池量", "电池"]},
+        {"key": "battery_state", "desc": "电量状态", "type": "enum", "access": "R", "aliases": ["电量状态"], "enumerations": [{"value": "low", "desc": "低"}, {"value": "middle", "desc": "中"}, {"value": "high", "desc": "高"}]},
+        {"key": "sensitivity", "desc": "灵敏度", "type": "enum", "access": "WR", "aliases": ["灵敏度"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "middle", "desc": "中"}, {"value": "low", "desc": "低"}]}
+      ]
+    },
+
+    "sensor.tvoc": {
+      "name": "TVOC传感器",
+      "aliases": ["TVOC", "TVOC传感器", "挥发性有机物"],
+      "attributes": [
+        {"key": "tvoc", "desc": "TVOC浓度", "type": "number", "access": "R", "unit": "mg/m³", "aliases": ["TVOC", "挥发性有机物"]},
+        {"key": "battery_percentage", "desc": "电池电量", "type": "number", "access": "R", "unit": "%", "aliases": ["电量"]},
+        {"key": "enable", "desc": "使能", "type": "enum", "access": "WR", "aliases": ["使能", "启用", "禁用"], "enumerations": [{"value": "true", "desc": "启用"}, {"value": "false", "desc": "禁用"}]},
+        {"key": "battery_value", "desc": "电池量", "type": "number", "access": "R", "aliases": ["电池量", "电池"]},
+        {"key": "battery_state", "desc": "电量状态", "type": "enum", "access": "R", "aliases": ["电量状态"], "enumerations": [{"value": "low", "desc": "低"}, {"value": "middle", "desc": "中"}, {"value": "high", "desc": "高"}]},
+        {"key": "sensitivity", "desc": "灵敏度", "type": "enum", "access": "WR", "aliases": ["灵敏度"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "middle", "desc": "中"}, {"value": "low", "desc": "低"}]}
+      ]
+    },
+
+    "sensor.formaldehyde": {
+      "name": "甲醛传感器",
+      "aliases": ["甲醛", "甲醛传感器"],
+      "attributes": [
+        {"key": "formaldehyde", "desc": "甲醛浓度", "type": "number", "access": "R", "unit": "mg/m³", "aliases": ["甲醛"]},
+        {"key": "battery_percentage", "desc": "电池电量", "type": "number", "access": "R", "unit": "%", "aliases": ["电量"]},
+        {"key": "enable", "desc": "使能", "type": "enum", "access": "WR", "aliases": ["使能", "启用", "禁用"], "enumerations": [{"value": "true", "desc": "启用"}, {"value": "false", "desc": "禁用"}]},
+        {"key": "battery_value", "desc": "电池量", "type": "number", "access": "R", "aliases": ["电池量", "电池"]},
+        {"key": "battery_state", "desc": "电量状态", "type": "enum", "access": "R", "aliases": ["电量状态"], "enumerations": [{"value": "low", "desc": "低"}, {"value": "middle", "desc": "中"}, {"value": "high", "desc": "高"}]},
+        {"key": "sensitivity", "desc": "灵敏度", "type": "enum", "access": "WR", "aliases": ["灵敏度"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "middle", "desc": "中"}, {"value": "low", "desc": "低"}]}
+      ]
+    },
+
+    "sensor.water_temperature": {
+      "name": "水温传感器",
+      "aliases": ["水温", "水温传感器"],
+      "attributes": [
+        {"key": "temperature", "desc": "水温", "type": "number", "access": "R", "unit": "℃", "aliases": ["水温", "温度"]},
+        {"key": "battery_percentage", "desc": "电池电量", "type": "number", "access": "R", "unit": "%", "aliases": ["电量"]},
+        {"key": "enable", "desc": "使能", "type": "enum", "access": "WR", "aliases": ["使能", "启用", "禁用"], "enumerations": [{"value": "true", "desc": "启用"}, {"value": "false", "desc": "禁用"}]},
+        {"key": "battery_value", "desc": "电池量", "type": "number", "access": "R", "aliases": ["电池量", "电池"]},
+        {"key": "battery_state", "desc": "电量状态", "type": "enum", "access": "R", "aliases": ["电量状态"], "enumerations": [{"value": "low", "desc": "低"}, {"value": "middle", "desc": "中"}, {"value": "high", "desc": "高"}]},
+        {"key": "sensitivity", "desc": "灵敏度", "type": "enum", "access": "WR", "aliases": ["灵敏度"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "middle", "desc": "中"}, {"value": "low", "desc": "低"}]}
+      ]
+    },
+
+    "sensor.ph": {
+      "name": "PH传感器",
+      "aliases": ["PH", "PH传感器", "酸碱度"],
+      "attributes": [
+        {"key": "ph", "desc": "PH值", "type": "number", "access": "R", "aliases": ["PH", "酸碱度"]},
+        {"key": "battery_percentage", "desc": "电池电量", "type": "number", "access": "R", "unit": "%", "aliases": ["电量"]},
+        {"key": "enable", "desc": "使能", "type": "enum", "access": "WR", "aliases": ["使能", "启用", "禁用"], "enumerations": [{"value": "true", "desc": "启用"}, {"value": "false", "desc": "禁用"}]},
+        {"key": "battery_value", "desc": "电池量", "type": "number", "access": "R", "aliases": ["电池量", "电池"]},
+        {"key": "battery_state", "desc": "电量状态", "type": "enum", "access": "R", "aliases": ["电量状态"], "enumerations": [{"value": "low", "desc": "低"}, {"value": "middle", "desc": "中"}, {"value": "high", "desc": "高"}]},
+        {"key": "sensitivity", "desc": "灵敏度", "type": "enum", "access": "WR", "aliases": ["灵敏度"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "middle", "desc": "中"}, {"value": "low", "desc": "低"}]}
+      ]
+    },
+
+    "sensor.light": {
+      "name": "照度传感器",
+      "aliases": ["照度", "照度传感器", "光照"],
+      "attributes": [
+        {"key": "lux", "desc": "照度", "type": "number", "access": "R", "unit": "lux", "aliases": ["照度", "光照", "光强"]},
+        {"key": "battery_percentage", "desc": "电池电量", "type": "number", "access": "R", "unit": "%", "aliases": ["电量"]},
+        {"key": "enable", "desc": "使能", "type": "enum", "access": "WR", "aliases": ["使能", "启用", "禁用"], "enumerations": [{"value": "true", "desc": "启用"}, {"value": "false", "desc": "禁用"}]},
+        {"key": "battery_value", "desc": "电池量", "type": "number", "access": "R", "aliases": ["电池量", "电池"]},
+        {"key": "battery_state", "desc": "电量状态", "type": "enum", "access": "R", "aliases": ["电量状态"], "enumerations": [{"value": "low", "desc": "低"}, {"value": "middle", "desc": "中"}, {"value": "high", "desc": "高"}]},
+        {"key": "sensitivity", "desc": "灵敏度", "type": "enum", "access": "WR", "aliases": ["灵敏度"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "middle", "desc": "中"}, {"value": "low", "desc": "低"}]}
+      ]
+    },
+
+    "sensor.pir_hold": {
+      "name": "存在传感器",
+      "aliases": ["存在传感器", "存在", "人体存在"],
+      "attributes": [
+        {"key": "pir", "desc": "有人/无人", "type": "enum", "access": "R", "aliases": ["有人", "无人", "存在"], "enumerations": [{"value": "on", "desc": "有人"}, {"value": "off", "desc": "无人"}]},
+        {"key": "hold_time", "desc": "持续时间", "type": "number", "access": "R", "unit": "s", "aliases": ["持续时间"]},
+        {"key": "battery_percentage", "desc": "电池电量", "type": "number", "access": "R", "unit": "%", "aliases": ["电量"]},
+        {"key": "enable", "desc": "使能", "type": "enum", "access": "WR", "aliases": ["使能", "启用", "禁用"], "enumerations": [{"value": "true", "desc": "启用"}, {"value": "false", "desc": "禁用"}]},
+        {"key": "battery_value", "desc": "电池量", "type": "number", "access": "R", "aliases": ["电池量", "电池"]},
+        {"key": "battery_state", "desc": "电量状态", "type": "enum", "access": "R", "aliases": ["电量状态"], "enumerations": [{"value": "low", "desc": "低"}, {"value": "middle", "desc": "中"}, {"value": "high", "desc": "高"}]},
+        {"key": "sensitivity", "desc": "灵敏度", "type": "enum", "access": "WR", "aliases": ["灵敏度"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "middle", "desc": "中"}, {"value": "low", "desc": "低"}]}
+      ]
+    },
+
+    "sensor.megahealth": {
+      "name": "毫米波(自研)",
+      "aliases": ["毫米波", "毫米波雷达", "微动传感器"],
+      "attributes": [
+        {"key": "presence", "desc": "存在", "type": "enum", "access": "R", "aliases": ["有人", "无人", "存在"], "enumerations": [{"value": "on", "desc": "有人"}, {"value": "off", "desc": "无人"}]},
+        {"key": "breath_rate", "desc": "呼吸率", "type": "number", "access": "R", "unit": "次/分", "aliases": ["呼吸", "呼吸率"]},
+        {"key": "heart_rate", "desc": "心率", "type": "number", "access": "R", "unit": "次/分", "aliases": ["心率", "心跳"]},
+        {"key": "enable", "desc": "使能", "type": "enum", "access": "WR", "aliases": ["使能", "启用", "禁用"], "enumerations": [{"value": "true", "desc": "启用"}, {"value": "false", "desc": "禁用"}]},
+        {"key": "battery_value", "desc": "电池量", "type": "number", "access": "R", "aliases": ["电池量", "电池"]},
+        {"key": "battery_state", "desc": "电量状态", "type": "enum", "access": "R", "aliases": ["电量状态"], "enumerations": [{"value": "low", "desc": "低"}, {"value": "middle", "desc": "中"}, {"value": "high", "desc": "高"}]},
+        {"key": "sensitivity", "desc": "灵敏度", "type": "enum", "access": "WR", "aliases": ["灵敏度"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "middle", "desc": "中"}, {"value": "low", "desc": "低"}]}
+      ]
+    },
+
+    "sensor.mmv_pose": {
+      "name": "毫米波(姿态版)",
+      "aliases": ["姿态毫米波", "姿态检测"],
+      "attributes": [
+        {"key": "pose", "desc": "姿态", "type": "string", "access": "R", "aliases": ["姿态", "姿势"]},
+        {"key": "presence", "desc": "存在", "type": "enum", "access": "R", "aliases": ["有人", "无人"], "enumerations": [{"value": "on", "desc": "有人"}, {"value": "off", "desc": "无人"}]},
+        {"key": "enable", "desc": "使能", "type": "enum", "access": "WR", "aliases": ["使能", "启用", "禁用"], "enumerations": [{"value": "true", "desc": "启用"}, {"value": "false", "desc": "禁用"}]},
+        {"key": "battery_value", "desc": "电池量", "type": "number", "access": "R", "aliases": ["电池量", "电池"]},
+        {"key": "battery_state", "desc": "电量状态", "type": "enum", "access": "R", "aliases": ["电量状态"], "enumerations": [{"value": "low", "desc": "低"}, {"value": "middle", "desc": "中"}, {"value": "high", "desc": "高"}]},
+        {"key": "sensitivity", "desc": "灵敏度", "type": "enum", "access": "WR", "aliases": ["灵敏度"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "middle", "desc": "中"}, {"value": "low", "desc": "低"}]}
+      ]
+    },
+
+    "sensor.mmv_sleep": {
+      "name": "毫米波(睡眠版)",
+      "aliases": ["睡眠毫米波", "睡眠检测"],
+      "attributes": [
+        {"key": "sleep_state", "desc": "睡眠状态", "type": "string", "access": "R", "aliases": ["睡眠", "睡眠状态"]},
+        {"key": "breath_rate", "desc": "呼吸率", "type": "number", "access": "R", "unit": "次/分", "aliases": ["呼吸"]},
+        {"key": "heart_rate", "desc": "心率", "type": "number", "access": "R", "unit": "次/分", "aliases": ["心率"]},
+        {"key": "enable", "desc": "使能", "type": "enum", "access": "WR", "aliases": ["使能", "启用", "禁用"], "enumerations": [{"value": "true", "desc": "启用"}, {"value": "false", "desc": "禁用"}]},
+        {"key": "battery_value", "desc": "电池量", "type": "number", "access": "R", "aliases": ["电池量", "电池"]},
+        {"key": "battery_state", "desc": "电量状态", "type": "enum", "access": "R", "aliases": ["电量状态"], "enumerations": [{"value": "low", "desc": "低"}, {"value": "middle", "desc": "中"}, {"value": "high", "desc": "高"}]},
+        {"key": "sensitivity", "desc": "灵敏度", "type": "enum", "access": "WR", "aliases": ["灵敏度"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "middle", "desc": "中"}, {"value": "low", "desc": "低"}]}
+      ]
+    },
+
+    "sensor.environment": {
+      "name": "环境传感器",
+      "aliases": ["环境传感器", "环境", "多合一环境"],
+      "attributes": [
+        {"key": "temperature", "desc": "温度", "type": "number", "access": "R", "unit": "℃", "aliases": ["温度"]},
+        {"key": "humidity", "desc": "湿度", "type": "number", "access": "R", "unit": "%", "aliases": ["湿度"]},
+        {"key": "pm25", "desc": "PM2.5", "type": "number", "access": "R", "unit": "μg/m³", "aliases": ["PM2.5"]},
+        {"key": "co2", "desc": "二氧化碳", "type": "number", "access": "R", "unit": "ppm", "aliases": ["二氧化碳", "CO2"]},
+        {"key": "enable", "desc": "使能", "type": "enum", "access": "WR", "aliases": ["使能", "启用", "禁用"], "enumerations": [{"value": "true", "desc": "启用"}, {"value": "false", "desc": "禁用"}]},
+        {"key": "battery_value", "desc": "电池量", "type": "number", "access": "R", "aliases": ["电池量", "电池"]},
+        {"key": "battery_state", "desc": "电量状态", "type": "enum", "access": "R", "aliases": ["电量状态"], "enumerations": [{"value": "low", "desc": "低"}, {"value": "middle", "desc": "中"}, {"value": "high", "desc": "高"}]},
+        {"key": "sensitivity", "desc": "灵敏度", "type": "enum", "access": "WR", "aliases": ["灵敏度"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "middle", "desc": "中"}, {"value": "low", "desc": "低"}]}
+      ]
+    },
+
+    "sensor.pir_multi": {
+      "name": "存在(多合一)",
+      "aliases": ["多合一存在", "多合一传感器"],
+      "attributes": [
+        {"key": "pir", "desc": "有人/无人", "type": "enum", "access": "R", "aliases": ["有人", "无人"], "enumerations": [{"value": "on", "desc": "有人"}, {"value": "off", "desc": "无人"}]},
+        {"key": "temperature", "desc": "温度", "type": "number", "access": "R", "unit": "℃", "aliases": ["温度"]},
+        {"key": "humidity", "desc": "湿度", "type": "number", "access": "R", "unit": "%", "aliases": ["湿度"]},
+        {"key": "illuminance", "desc": "照度", "type": "number", "access": "R", "unit": "lux", "aliases": ["照度"]},
+        {"key": "enable", "desc": "使能", "type": "enum", "access": "WR", "aliases": ["使能", "启用", "禁用"], "enumerations": [{"value": "true", "desc": "启用"}, {"value": "false", "desc": "禁用"}]},
+        {"key": "battery_value", "desc": "电池量", "type": "number", "access": "R", "aliases": ["电池量", "电池"]},
+        {"key": "battery_state", "desc": "电量状态", "type": "enum", "access": "R", "aliases": ["电量状态"], "enumerations": [{"value": "low", "desc": "低"}, {"value": "middle", "desc": "中"}, {"value": "high", "desc": "高"}]},
+        {"key": "sensitivity", "desc": "灵敏度", "type": "enum", "access": "WR", "aliases": ["灵敏度"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "middle", "desc": "中"}, {"value": "low", "desc": "低"}]}
+      ]
+    },
+
+    "sensor.dryContact": {
+      "name": "干接点传感器",
+      "aliases": ["干接点", "干接点传感器", "干节点"],
+      "attributes": [
+        {"key": "state", "desc": "状态", "type": "enum", "access": "R", "aliases": ["状态", "通", "断"], "enumerations": [{"value": "on", "desc": "通"}, {"value": "off", "desc": "断"}]},
+        {"key": "enable", "desc": "使能", "type": "enum", "access": "WR", "aliases": ["使能", "启用", "禁用"], "enumerations": [{"value": "true", "desc": "启用"}, {"value": "false", "desc": "禁用"}]},
+        {"key": "battery_value", "desc": "电池量", "type": "number", "access": "R", "aliases": ["电池量", "电池"]},
+        {"key": "battery_state", "desc": "电量状态", "type": "enum", "access": "R", "aliases": ["电量状态"], "enumerations": [{"value": "low", "desc": "低"}, {"value": "middle", "desc": "中"}, {"value": "high", "desc": "高"}]},
+        {"key": "sensitivity", "desc": "灵敏度", "type": "enum", "access": "WR", "aliases": ["灵敏度"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "middle", "desc": "中"}, {"value": "low", "desc": "低"}]}
+      ]
+    },
+
+    "sensor.help": {
+      "name": "紧急求助",
+      "aliases": ["紧急求助", "求救", "SOS"],
+      "attributes": [
+        {"key": "help_alarm", "desc": "求助报警", "type": "enum", "access": "R", "aliases": ["求助", "报警", "SOS"], "enumerations": [{"value": "on", "desc": "求助中"}, {"value": "off", "desc": "正常"}]},
+        {"key": "battery_percentage", "desc": "电池电量", "type": "number", "access": "R", "unit": "%", "aliases": ["电量"]},
+        {"key": "enable", "desc": "使能", "type": "enum", "access": "WR", "aliases": ["使能", "启用", "禁用"], "enumerations": [{"value": "true", "desc": "启用"}, {"value": "false", "desc": "禁用"}]},
+        {"key": "battery_value", "desc": "电池量", "type": "number", "access": "R", "aliases": ["电池量", "电池"]},
+        {"key": "battery_state", "desc": "电量状态", "type": "enum", "access": "R", "aliases": ["电量状态"], "enumerations": [{"value": "low", "desc": "低"}, {"value": "middle", "desc": "中"}, {"value": "high", "desc": "高"}]},
+        {"key": "sensitivity", "desc": "灵敏度", "type": "enum", "access": "WR", "aliases": ["灵敏度"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "middle", "desc": "中"}, {"value": "low", "desc": "低"}]}
+      ]
+    },
+
+    "sensor.ultrasonic": {
+      "name": "超声波传感器",
+      "aliases": ["超声波", "超声波传感器"],
+      "attributes": [
+        {"key": "distance", "desc": "距离", "type": "number", "access": "R", "unit": "cm", "aliases": ["距离"]},
+        {"key": "battery_percentage", "desc": "电池电量", "type": "number", "access": "R", "unit": "%", "aliases": ["电量"]},
+        {"key": "enable", "desc": "使能", "type": "enum", "access": "WR", "aliases": ["使能", "启用", "禁用"], "enumerations": [{"value": "true", "desc": "启用"}, {"value": "false", "desc": "禁用"}]},
+        {"key": "battery_value", "desc": "电池量", "type": "number", "access": "R", "aliases": ["电池量", "电池"]},
+        {"key": "battery_state", "desc": "电量状态", "type": "enum", "access": "R", "aliases": ["电量状态"], "enumerations": [{"value": "low", "desc": "低"}, {"value": "middle", "desc": "中"}, {"value": "high", "desc": "高"}]},
+        {"key": "sensitivity", "desc": "灵敏度", "type": "enum", "access": "WR", "aliases": ["灵敏度"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "middle", "desc": "中"}, {"value": "low", "desc": "低"}]}
+      ]
+    },
+
+    "sensor.duishe": {
+      "name": "红外对射",
+      "aliases": ["红外对射", "对射", "对射传感器"],
+      "attributes": [
+        {"key": "alarm", "desc": "报警", "type": "enum", "access": "R", "aliases": ["报警", "触发"], "enumerations": [{"value": "on", "desc": "触发"}, {"value": "off", "desc": "正常"}]},
+        {"key": "enable", "desc": "使能", "type": "enum", "access": "WR", "aliases": ["使能", "启用", "禁用"], "enumerations": [{"value": "true", "desc": "启用"}, {"value": "false", "desc": "禁用"}]},
+        {"key": "battery_value", "desc": "电池量", "type": "number", "access": "R", "aliases": ["电池量", "电池"]},
+        {"key": "battery_state", "desc": "电量状态", "type": "enum", "access": "R", "aliases": ["电量状态"], "enumerations": [{"value": "low", "desc": "低"}, {"value": "middle", "desc": "中"}, {"value": "high", "desc": "高"}]},
+        {"key": "sensitivity", "desc": "灵敏度", "type": "enum", "access": "WR", "aliases": ["灵敏度"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "middle", "desc": "中"}, {"value": "low", "desc": "低"}]}
+      ]
+    },
+
+    "sensor.shanlan": {
+      "name": "珊栏",
+      "aliases": ["珊栏", "珊栏传感器", "电子珊栏"],
+      "attributes": [
+        {"key": "alarm", "desc": "报警", "type": "enum", "access": "R", "aliases": ["报警", "触发"], "enumerations": [{"value": "on", "desc": "触发"}, {"value": "off", "desc": "正常"}]},
+        {"key": "enable", "desc": "使能", "type": "enum", "access": "WR", "aliases": ["使能", "启用", "禁用"], "enumerations": [{"value": "true", "desc": "启用"}, {"value": "false", "desc": "禁用"}]},
+        {"key": "battery_value", "desc": "电池量", "type": "number", "access": "R", "aliases": ["电池量", "电池"]},
+        {"key": "battery_state", "desc": "电量状态", "type": "enum", "access": "R", "aliases": ["电量状态"], "enumerations": [{"value": "low", "desc": "低"}, {"value": "middle", "desc": "中"}, {"value": "high", "desc": "高"}]},
+        {"key": "sensitivity", "desc": "灵敏度", "type": "enum", "access": "WR", "aliases": ["灵敏度"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "middle", "desc": "中"}, {"value": "low", "desc": "低"}]}
+      ]
+    },
+
+    "security.peephole.ez": {
+      "name": "猫眼(萤石)",
+      "aliases": ["猫眼", "智能猫眼", "门禁猫眼"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "motion_detect", "desc": "移动侦测", "type": "enum", "access": "WR", "aliases": ["移动侦测", "侦测"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]}
+      ]
+    },
+
+    "security.door.roller": {
+      "name": "卷闸门",
+      "aliases": ["卷闸门", "卷门", "电动卷门"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "升起", "降下"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "position", "desc": "位置", "type": "number", "access": "WR", "unit": "%", "min": 0, "max": 100, "step": 1, "aliases": ["位置", "开度"]}
+      ]
+    },
+
+    "security.door.switch": {
+      "name": "开关门",
+      "aliases": ["开关门", "门"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "打开", "关闭"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]}
+      ]
+    },
+
+    "security.module": {
+      "name": "安防模块",
+      "aliases": ["安防模块", "安防"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "布防", "撤防"], "enumerations": [{"value": "on", "desc": "布防"}, {"value": "off", "desc": "撤防"}]}
+      ]
+    },
+
+    "ir.module": {
+      "name": "红外宝",
+      "aliases": ["红外宝", "红外模块", "自学习红外"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]}
+      ]
+    },
+
+    "ir.learn": {
+      "name": "自学习红外",
+      "aliases": ["自学习", "学习红外"],
+      "attributes": [
+        {"key": "key1", "desc": "按键1", "type": "enum", "access": "W", "aliases": ["按键1"], "enumerations": [{"value": "on", "desc": "按下"}]},
+        {"key": "key2", "desc": "按键2", "type": "enum", "access": "W", "aliases": ["按键2"], "enumerations": [{"value": "on", "desc": "按下"}]},
+        {"key": "key3", "desc": "按键3", "type": "enum", "access": "W", "aliases": ["按键3"], "enumerations": [{"value": "on", "desc": "按下"}]}
+      ]
+    },
+
+    "ir.pjt": {
+      "name": "投影仪(红外)",
+      "aliases": ["投影仪", "投影", "红外投影"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "volume_up", "desc": "音量+", "type": "enum", "access": "W", "aliases": ["音量大"], "enumerations": [{"value": "on", "desc": "按下"}]},
+        {"key": "volume_down", "desc": "音量-", "type": "enum", "access": "W", "aliases": ["音量小"], "enumerations": [{"value": "on", "desc": "按下"}]},
+        {"key": "mute", "desc": "静音", "type": "enum", "access": "W", "aliases": ["静音"], "enumerations": [{"value": "on", "desc": "按下"}]}
+      ]
+    },
+
+    "ir.stb": {
+      "name": "机顶盒(红外)",
+      "aliases": ["机顶盒", "电视盒子", "红外机顶盒"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "volume_up", "desc": "音量+", "type": "enum", "access": "W", "aliases": ["音量大"], "enumerations": [{"value": "on", "desc": "按下"}]},
+        {"key": "volume_down", "desc": "音量-", "type": "enum", "access": "W", "aliases": ["音量小"], "enumerations": [{"value": "on", "desc": "按下"}]},
+        {"key": "ch_up", "desc": "频道+", "type": "enum", "access": "W", "aliases": ["上一个台"], "enumerations": [{"value": "on", "desc": "按下"}]},
+        {"key": "ch_down", "desc": "频道-", "type": "enum", "access": "W", "aliases": ["下一个台"], "enumerations": [{"value": "on", "desc": "按下"}]}
+      ]
+    },
+
+    "ir.iptv": {
+      "name": "网络机顶盒(红外)",
+      "aliases": ["网络机顶盒", "IPTV", "网络电视盒"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "volume_up", "desc": "音量+", "type": "enum", "access": "W", "aliases": ["音量大"], "enumerations": [{"value": "on", "desc": "按下"}]},
+        {"key": "volume_down", "desc": "音量-", "type": "enum", "access": "W", "aliases": ["音量小"], "enumerations": [{"value": "on", "desc": "按下"}]},
+        {"key": "play", "desc": "播放", "type": "enum", "access": "W", "aliases": ["播放", "继续"], "enumerations": [{"value": "on", "desc": "按下"}]},
+        {"key": "pause", "desc": "暂停", "type": "enum", "access": "W", "aliases": ["暂停"], "enumerations": [{"value": "on", "desc": "按下"}]}
+      ]
+    },
+
+    "ir.dvd": {
+      "name": "影碟机(红外)",
+      "aliases": ["影碟机", "DVD", "光盘机"],
+      "attributes": [
+        {"key": "play", "desc": "播放", "type": "enum", "access": "W", "aliases": ["播放"], "enumerations": [{"value": "on", "desc": "按下"}]},
+        {"key": "pause", "desc": "暂停", "type": "enum", "access": "W", "aliases": ["暂停"], "enumerations": [{"value": "on", "desc": "按下"}]},
+        {"key": "stop", "desc": "停止", "type": "enum", "access": "W", "aliases": ["停止"], "enumerations": [{"value": "on", "desc": "按下"}]},
+        {"key": "rewind", "desc": "快退", "type": "enum", "access": "W", "aliases": ["快退", "后退"], "enumerations": [{"value": "on", "desc": "按下"}]},
+        {"key": "fast_forward", "desc": "快进", "type": "enum", "access": "W", "aliases": ["快进", "前进"], "enumerations": [{"value": "on", "desc": "按下"}]}
+      ]
+    },
+
+    "ir.air_purifier": {
+      "name": "空气净化器(红外)",
+      "aliases": ["空气净化器", "净化器", "红外净化器"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "speed", "desc": "风速", "type": "enum", "access": "WR", "aliases": ["风速", "档位"], "enumerations": [{"value": "auto", "desc": "自动"}, {"value": "sleep", "desc": "睡眠"}, {"value": "strong", "desc": "强"}]},
+        {"key": "mode", "desc": "模式", "type": "enum", "access": "WR", "aliases": ["模式"], "enumerations": [{"value": "auto", "desc": "自动"}, {"value": "manual", "desc": "手动"}]}
+      ]
+    },
+
+    "ir.water_heater": {
+      "name": "热水器(红外)",
+      "aliases": ["热水器", "红外热水器"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "temp_up", "desc": "温度+", "type": "enum", "access": "W", "aliases": ["调高温度"], "enumerations": [{"value": "on", "desc": "按下"}]},
+        {"key": "temp_down", "desc": "温度-", "type": "enum", "access": "W", "aliases": ["调低温度"], "enumerations": [{"value": "on", "desc": "按下"}]},
+        {"key": "mode", "desc": "模式", "type": "enum", "access": "WR", "aliases": ["模式"], "enumerations": [{"value": "keep_warm", "desc": "保温"}, {"value": "heat", "desc": "加热"}]}
+      ]
+    },
+
+    "ir.audio": {
+      "name": "音响(红外)",
+      "aliases": ["音响", "功放", "红外音响"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "volume_up", "desc": "音量+", "type": "enum", "access": "W", "aliases": ["音量大"], "enumerations": [{"value": "on", "desc": "按下"}]},
+        {"key": "volume_down", "desc": "音量-", "type": "enum", "access": "W", "aliases": ["音量小"], "enumerations": [{"value": "on", "desc": "按下"}]},
+        {"key": "mute", "desc": "静音", "type": "enum", "access": "W", "aliases": ["静音"], "enumerations": [{"value": "on", "desc": "按下"}]},
+        {"key": "play", "desc": "播放", "type": "enum", "access": "W", "aliases": ["播放"], "enumerations": [{"value": "on", "desc": "按下"}]},
+        {"key": "pause", "desc": "暂停", "type": "enum", "access": "W", "aliases": ["暂停"], "enumerations": [{"value": "on", "desc": "按下"}]}
+      ]
+    },
+
+    "electrical.sweep.tuya": {
+      "name": "扫地机器人(涂鸦)",
+      "aliases": ["扫地机器人", "扫地机", "扫地宝"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "开始", "停止"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "mode", "desc": "模式", "type": "enum", "access": "WR", "aliases": ["模式", "自动", "边缘", "回充"], "enumerations": [{"value": "auto", "desc": "自动"}, {"value": "edge", "desc": "边缘"}, {"value": "charge", "desc": "回充"}]},
+        {"key": "fan_speed", "desc": "吸力", "type": "enum", "access": "WR", "aliases": ["吸力", "档位"], "enumerations": [{"value": "low", "desc": "静音"}, {"value": "medium", "desc": "标准"}, {"value": "high", "desc": "强力"}]}
+      ]
+    },
+
+    "electrical.sweep.dreame": {
+      "name": "扫地机器人(追觅)",
+      "aliases": ["追觅扫地机", "追觅"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "开始"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "mode", "desc": "模式", "type": "enum", "access": "WR", "aliases": ["模式"], "enumerations": [{"value": "auto", "desc": "自动"}, {"value": "spot", "desc": "局部"}, {"value": "charge", "desc": "回充"}]}
+      ]
+    },
+
+    "electrical.watervalve.tuya_aw713": {
+      "name": "厨房水阀机械手(涂鸦)",
+      "aliases": ["水阀", "水阀机械手", "机械水阀"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "通水", "断水"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]}
+      ]
+    },
+
+    "electrical.breakerP3": {
+      "name": "空气开关P3",
+      "aliases": ["空开P3", "空气开关P3", "P3空开"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "合闸", "分闸"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]}
+      ]
+    },
+
+    "electrical.robot": {
+      "name": "机器人",
+      "aliases": ["机器人", "智能机器人"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]}
+      ]
+    },
+
+    "electrical.mechanical_arm": {
+      "name": "机械手",
+      "aliases": ["机械手", "机械臂"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "position", "desc": "位置", "type": "number", "access": "WR", "unit": "%", "min": 0, "max": 100, "step": 1, "aliases": ["位置"]}
+      ]
+    },
+
+    "electrical.water_heater.jinmao": {
+      "name": "热水器(金茂)",
+      "aliases": ["热水器", "金茂热水器"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 30, "max": 75, "step": 1, "aliases": ["温度", "设定温度"]}
+      ]
+    },
+
+    "energy.electric": {
+      "name": "电能",
+      "aliases": ["电能", "电表", "电能表"],
+      "attributes": [
+        {"key": "voltage", "desc": "电压", "type": "number", "access": "R", "unit": "V", "aliases": ["电压"]},
+        {"key": "current", "desc": "电流", "type": "number", "access": "R", "unit": "A", "aliases": ["电流"]},
+        {"key": "power", "desc": "功率", "type": "number", "access": "R", "unit": "W", "aliases": ["功率"]},
+        {"key": "energy", "desc": "电量", "type": "number", "access": "R", "unit": "kWh", "aliases": ["电量", "电能"]}
+      ]
+    },
+
+    "energy.inverter": {
+      "name": "逆变器",
+      "aliases": ["逆变器", "光伏逆变器"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "output_power", "desc": "输出功率", "type": "number", "access": "R", "unit": "W", "aliases": ["输出功率", "功率"]},
+        {"key": "daily_energy", "desc": "日发电量", "type": "number", "access": "R", "unit": "kWh", "aliases": ["日发电量", "发电"]}
+      ]
+    },
+
+    "energy.hdl_battery": {
+      "name": "电池",
+      "aliases": ["电池", "储能电池"],
+      "attributes": [
+        {"key": "soc", "desc": "剩余电量", "type": "number", "access": "R", "unit": "%", "min": 0, "max": 100, "aliases": ["电量", "剩余电量", "SOC"]},
+        {"key": "voltage", "desc": "电压", "type": "number", "access": "R", "unit": "V", "aliases": ["电压"]},
+        {"key": "current", "desc": "电流", "type": "number", "access": "R", "unit": "A", "aliases": ["电流"]}
+      ]
+    },
+
+    "energy.charging.deye": {
+      "name": "充电桩(德业)",
+      "aliases": ["充电桩", "德业充电桩"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "开始充电", "停止充电"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "charging_power", "desc": "充电功率", "type": "number", "access": "R", "unit": "kW", "aliases": ["充电功率", "功率"]},
+        {"key": "charging_energy", "desc": "充电量", "type": "number", "access": "R", "unit": "kWh", "aliases": ["充电量"]}
+      ]
+    },
+
+    "hotel.doorbell": {
+      "name": "门铃",
+      "aliases": ["门铃", "酒店门铃"],
+      "attributes": [
+        {"key": "ring", "desc": "按门铃", "type": "enum", "access": "W", "aliases": ["按门铃", "门铃"], "enumerations": [{"value": "on", "desc": "按下"}]}
+      ]
+    },
+
+    "hotel.rs": {
+      "name": "客房控制",
+      "aliases": ["客房控制", "客房", "RCU"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "mode", "desc": "模式", "type": "enum", "access": "WR", "aliases": ["模式", "入住", "退房", "请勿打扰", "请清理"], "enumerations": [{"value": "checkin", "desc": "入住"}, {"value": "checkout", "desc": "退房"}, {"value": "dnd", "desc": "请勿打扰"}, {"value": "makeup", "desc": "请清理"}]}
+      ]
+    },
+
+    "hotel.alarm": {
+      "name": "酒店报警",
+      "aliases": ["酒店报警", "客房报警"],
+      "attributes": [
+        {"key": "alarm", "desc": "报警", "type": "enum", "access": "R", "aliases": ["报警", "触发"], "enumerations": [{"value": "on", "desc": "报警中"}, {"value": "off", "desc": "正常"}]}
+      ]
+    },
+
+    "inside.cloudenvironment": {
+      "name": "室外环境数据",
+      "aliases": ["室外环境", "环境数据"],
+      "attributes": [
+        {"key": "pm25", "desc": "PM2.5", "type": "number", "access": "R", "unit": "μg/m³", "aliases": ["PM2.5"]},
+        {"key": "temperature", "desc": "温度", "type": "number", "access": "R", "unit": "℃", "aliases": ["温度"]},
+        {"key": "humidity", "desc": "湿度", "type": "number", "access": "R", "unit": "%", "aliases": ["湿度"]},
+        {"key": "weather", "desc": "天气", "type": "string", "access": "R", "aliases": ["天气"]}
+      ]
+    },
+
+    "light.rgbw.jinmao": {
+      "name": "金茂定制RGBW灯",
+      "aliases": ["金茂RGBW灯", "金茂彩灯", "金茂定制灯"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "打开", "关闭"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "brightness", "desc": "亮度", "type": "number", "access": "WR", "unit": "%", "min": 0, "max": 100, "step": 1, "aliases": ["亮度", "调亮", "调暗", "调光"]},
+        {"key": "delay", "desc": "延时", "type": "number", "access": "WR", "unit": "s", "min": 0, "max": 3600, "step": 1, "aliases": ["延时", "延迟", "定时"]},
+        {"key": "fade_time", "desc": "渐变时间", "type": "number", "access": "WR", "unit": "s", "min": 0, "max": 100, "step": 1, "aliases": ["渐变", "渐变时间"]},
+        {"key": "cct", "desc": "色温", "type": "number", "access": "WR", "unit": "K", "min": 0, "max": 65535, "step": 1, "aliases": ["色温", "暖光", "冷光", "暖白", "冷白"]},
+        {"key": "rgbw", "desc": "RGBW颜色", "type": "color", "access": "WR", "format": "r,g,b,w", "aliases": ["颜色", "红色", "绿色", "蓝色", "白色"]},
+        {"key": "mode", "desc": "模式", "type": "enum", "access": "WR", "aliases": ["模式", "色温模式", "彩光模式"], "enumerations": [{"value": "cct", "desc": "色温"}, {"value": "rgbw", "desc": "彩光"}]}
+      ]
+    },
+
+    "hvac.airFresh.jinmao": {
+      "name": "金茂定制新风",
+      "aliases": ["金茂新风", "金茂定制新风"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "打开", "关闭"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "mode", "desc": "模式", "type": "enum", "access": "WR", "aliases": ["模式", "加湿", "风扇"], "enumerations": [{"value": "humidification", "desc": "加湿"}, {"value": "fan", "desc": "风扇"}]},
+        {"key": "energy", "desc": "节能", "type": "enum", "access": "WR", "aliases": ["节能", "省电"], "enumerations": [{"value": "true", "desc": "开启"}, {"value": "false", "desc": "关闭"}]},
+        {"key": "fan", "desc": "风速", "type": "enum", "access": "WR", "aliases": ["风速", "风量", "档位", "1档", "2档", "3档", "4档"], "enumerations": [{"value": "level_1", "desc": "1档"}, {"value": "level_2", "desc": "2档"}, {"value": "level_3", "desc": "3档"}, {"value": "level_4", "desc": "4档"}]},
+        {"key": "humidity", "desc": "湿度", "type": "number", "access": "WR", "unit": "%", "aliases": ["湿度", "目标湿度"]},
+        {"key": "indoor_temp", "desc": "室内温度", "type": "number", "access": "R", "unit": "℃", "aliases": ["室内温度", "室温"]},
+        {"key": "indoor_humidity", "desc": "室内湿度", "type": "number", "access": "R", "unit": "%", "aliases": ["室内湿度"]},
+        {"key": "filter_remain", "desc": "过滤网剩余量", "type": "number", "access": "R", "aliases": ["过滤网", "滤网剩余"]},
+        {"key": "filter_timeout", "desc": "过滤网超时警告", "type": "enum", "access": "WR", "aliases": ["过滤网超时", "滤网警告"], "enumerations": [{"value": "true", "desc": "警告"}, {"value": "false", "desc": "正常"}]}
+      ]
+    },
+
+    "hvac.fan.tuya_ef101": {
+      "name": "涂鸦循环风扇",
+      "aliases": ["涂鸦风扇", "循环风扇", "循环扇"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "打开", "关闭"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "fan_speed", "desc": "风速", "type": "enum", "access": "WR", "aliases": ["风速", "档位", "1档", "2档", "3档", "4档", "自动"], "enumerations": [{"value": "1", "desc": "1档"}, {"value": "2", "desc": "2档"}, {"value": "3", "desc": "3档"}, {"value": "4", "desc": "4档"}, {"value": "auto", "desc": "自动"}]},
+        {"key": "mode", "desc": "模式", "type": "enum", "access": "WR", "aliases": ["模式", "正常", "自然风", "睡眠"], "enumerations": [{"value": "normal", "desc": "正常"}, {"value": "natural", "desc": "自然风"}, {"value": "sleep", "desc": "睡眠"}]},
+        {"key": "oscillate", "desc": "摆风", "type": "enum", "access": "WR", "aliases": ["摆风", "摇头", "扫风"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]}
+      ]
+    },
+
+    "hvac.air.tuya_epi345": {
+      "name": "涂鸦空气净化器",
+      "aliases": ["涂鸦净化器", "空气净化器", "净化器"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "打开", "关闭"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "mode", "desc": "模式", "type": "enum", "access": "WR", "aliases": ["模式", "自动", "手动", "睡眠"], "enumerations": [{"value": "auto", "desc": "自动"}, {"value": "manual", "desc": "手动"}, {"value": "sleep", "desc": "睡眠"}]},
+        {"key": "fan_speed", "desc": "风速", "type": "enum", "access": "WR", "aliases": ["风速", "档位", "低", "中", "高"], "enumerations": [{"value": "low", "desc": "低"}, {"value": "middle", "desc": "中"}, {"value": "high", "desc": "高"}]},
+        {"key": "pm25", "desc": "PM2.5", "type": "number", "access": "R", "unit": "μg/m³", "aliases": ["PM2.5", "细颗粒物"]},
+        {"key": "filter_remain", "desc": "滤网剩余", "type": "number", "access": "R", "unit": "%", "aliases": ["滤网剩余", "滤网"]}
+      ]
+    },
+
+    "hvac.floorHeat_panel": {
+      "name": "地热面板",
+      "aliases": ["地热面板", "地暖面板", "温控面板"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "打开", "关闭"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "mode", "desc": "模式", "type": "enum", "access": "WR", "aliases": ["模式", "手动", "编程"], "enumerations": [{"value": "manual", "desc": "手动"}, {"value": "program", "desc": "编程"}]},
+        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 5, "max": 45, "step": 1, "aliases": ["温度", "设定温度"]},
+        {"key": "room_temp", "desc": "室温", "type": "number", "access": "R", "unit": "℃", "aliases": ["室温", "当前温度"]}
+      ]
+    },
+
+    "hvac.airFresh.deye": {
+      "name": "德业新风",
+      "aliases": ["德业新风", "德业新鲜空气"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "打开", "关闭"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "fan_speed", "desc": "风速", "type": "enum", "access": "WR", "aliases": ["风速", "档位", "1档", "2档", "3档", "自动"], "enumerations": [{"value": "1", "desc": "1档"}, {"value": "2", "desc": "2档"}, {"value": "3", "desc": "3档"}, {"value": "auto", "desc": "自动"}]},
+        {"key": "mode", "desc": "模式", "type": "enum", "access": "WR", "aliases": ["模式", "换气", "排风"], "enumerations": [{"value": "ventilation", "desc": "换气"}, {"value": "exhaust", "desc": "排风"}]},
+        {"key": "humidity", "desc": "湿度", "type": "number", "access": "WR", "unit": "%", "aliases": ["湿度", "目标湿度"]},
+        {"key": "filter_remain", "desc": "滤网剩余", "type": "number", "access": "R", "unit": "%", "aliases": ["滤网剩余", "滤网"]}
+      ]
+    },
+
+    "electrical.tv.hisense": {
+      "name": "海信电视",
+      "aliases": ["海信电视", "海信电视机"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "打开", "关闭"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "wol", "desc": "网络唤醒", "type": "enum", "access": "WR", "aliases": ["网络唤醒", "唤醒"], "enumerations": [{"value": "on", "desc": "唤醒"}]},
+        {"key": "set_volume", "desc": "设置音量", "type": "number", "access": "WR", "unit": "%", "min": 0, "max": 100, "step": 1, "aliases": ["音量", "设置音量", "调大音量", "调小音量"]},
+        {"key": "mute", "desc": "静音", "type": "enum", "access": "WR", "aliases": ["静音", "取消静音"], "enumerations": [{"value": "on", "desc": "静音"}, {"value": "off", "desc": "取消静音"}]},
+        {"key": "operation", "desc": "操作", "type": "enum", "access": "WR", "aliases": ["操作", "播放", "暂停", "快进", "快退"], "enumerations": [{"value": "play", "desc": "播放"}, {"value": "pause", "desc": "暂停"}, {"value": "forward", "desc": "快进"}, {"value": "back", "desc": "快退"}]},
+        {"key": "media_play", "desc": "播放", "type": "enum", "access": "WR", "aliases": ["播放", "继续"], "enumerations": [{"value": "on", "desc": "播放"}]},
+        {"key": "media_pause", "desc": "暂停", "type": "enum", "access": "WR", "aliases": ["暂停"], "enumerations": [{"value": "on", "desc": "暂停"}]},
+        {"key": "fast_forward", "desc": "快进", "type": "enum", "access": "WR", "aliases": ["快进", "前进"], "enumerations": [{"value": "on", "desc": "快进"}]},
+        {"key": "fast_back", "desc": "快退", "type": "enum", "access": "WR", "aliases": ["快退", "后退"], "enumerations": [{"value": "on", "desc": "快退"}]},
+        {"key": "home_page", "desc": "主页", "type": "enum", "access": "WR", "aliases": ["主页", "首页"], "enumerations": [{"value": "on", "desc": "主页"}]},
+        {"key": "signal", "desc": "信号源", "type": "enum", "access": "WR", "aliases": ["信号源", "信号"], "enumerations": [{"value": "on", "desc": "切换"}]},
+        {"key": "system_setting", "desc": "系统设置", "type": "enum", "access": "WR", "aliases": ["系统设置", "设置"], "enumerations": [{"value": "on", "desc": "设置"}]}
+      ]
+    },
+
+    "electrical.sweep.tuya_a900": {
+      "name": "扫地机器人(涂鸦A900)",
+      "aliases": ["扫地机器人", "扫地机", "涂鸦扫地机"],
+      "attributes": [
+        {"key": "workSwitch", "desc": "工作开关", "type": "enum", "access": "WR", "aliases": ["工作开关", "开始", "停止", "暂停", "回充"], "enumerations": [{"value": "start", "desc": "开始"}, {"value": "stop", "desc": "停止"}, {"value": "pause", "desc": "暂停"}, {"value": "charge", "desc": "回充"}]},
+        {"key": "cleaningPosition", "desc": "清扫位置", "type": "enum", "access": "WR", "aliases": ["清扫位置", "清扫区域"], "enumerations": [{"value": "on", "desc": "设置"}]},
+        {"key": "battery", "desc": "电量", "type": "number", "access": "R", "unit": "%", "aliases": ["电量", "电池"]},
+        {"key": "cleanMode", "desc": "清扫模式", "type": "enum", "access": "WR", "aliases": ["清扫模式", "自动", "局部", "边缘", "单个"], "enumerations": [{"value": "auto", "desc": "自动"}, {"value": "spot", "desc": "局部"}, {"value": "edge", "desc": "边缘"}, {"value": "single", "desc": "单个"}]},
+        {"key": "cleanModeSet", "desc": "清扫模式设置", "type": "enum", "access": "WR", "aliases": ["清扫模式设置"], "enumerations": [{"value": "on", "desc": "设置"}]},
+        {"key": "workStatus", "desc": "工作状态", "type": "enum", "access": "R", "aliases": ["工作状态", "状态"], "enumerations": [{"value": "on", "desc": "工作中"}]},
+        {"key": "errorStatus", "desc": "错误状态", "type": "enum", "access": "R", "aliases": ["错误状态", "故障"], "enumerations": [{"value": "on", "desc": "故障"}]}
+      ]
+    },
+
+    "sensor.hcho": {
+      "name": "甲醛传感器",
+      "aliases": ["甲醛", "甲醛传感器", "HCHO"],
+      "attributes": [
+        {"key": "enable", "desc": "使能", "type": "enum", "access": "WR", "aliases": ["使能", "启用", "禁用"], "enumerations": [{"value": "true", "desc": "启用"}, {"value": "false", "desc": "禁用"}]},
+        {"key": "hcho", "desc": "甲醛值", "type": "number", "access": "R", "unit": "mg/m³", "aliases": ["甲醛", "甲醛值"]},
+        {"key": "battery_value", "desc": "电池量", "type": "number", "access": "R", "unit": "mA", "aliases": ["电池量", "电池"]},
+        {"key": "battery_percentage", "desc": "电池百分比", "type": "number", "access": "R", "unit": "%", "aliases": ["电量", "电池百分比"]},
+        {"key": "battery_state", "desc": "电量状态", "type": "enum", "access": "R", "aliases": ["电量状态"], "enumerations": [{"value": "low", "desc": "低"}, {"value": "middle", "desc": "中"}, {"value": "high", "desc": "高"}]},
+        {"key": "sensitivity", "desc": "灵敏度", "type": "enum", "access": "WR", "aliases": ["灵敏度"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "middle", "desc": "中"}, {"value": "low", "desc": "低"}]}
+      ]
+    },
+
+    "sensor.oxygen_saturation": {
+      "name": "氧饱和度传感器",
+      "aliases": ["氧饱和度", "氧饱和度传感器", "血氧"],
+      "attributes": [
+        {"key": "enable", "desc": "使能", "type": "enum", "access": "WR", "aliases": ["使能", "启用", "禁用"], "enumerations": [{"value": "true", "desc": "启用"}, {"value": "false", "desc": "禁用"}]},
+        {"key": "oxygen_saturation", "desc": "氧饱和度", "type": "number", "access": "R", "unit": "%", "aliases": ["氧饱和度", "血氧"]},
+        {"key": "battery_value", "desc": "电池量", "type": "number", "access": "R", "aliases": ["电池量", "电池"]},
+        {"key": "battery_state", "desc": "电量状态", "type": "enum", "access": "R", "aliases": ["电量状态"], "enumerations": [{"value": "low", "desc": "低"}, {"value": "middle", "desc": "中"}, {"value": "high", "desc": "高"}]},
+        {"key": "sensitivity", "desc": "灵敏度", "type": "enum", "access": "WR", "aliases": ["灵敏度"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "middle", "desc": "中"}, {"value": "low", "desc": "低"}]}
+      ]
+    },
+
+    "sensor.oxygen_potency": {
+      "name": "氧效能传感器",
+      "aliases": ["氧效能", "氧效能传感器"],
+      "attributes": [
+        {"key": "enable", "desc": "使能", "type": "enum", "access": "WR", "aliases": ["使能", "启用", "禁用"], "enumerations": [{"value": "true", "desc": "启用"}, {"value": "false", "desc": "禁用"}]},
+        {"key": "oxygen_potency", "desc": "氧效能", "type": "number", "access": "R", "aliases": ["氧效能"]},
+        {"key": "battery_value", "desc": "电池量", "type": "number", "access": "R", "aliases": ["电池量", "电池"]},
+        {"key": "battery_state", "desc": "电量状态", "type": "enum", "access": "R", "aliases": ["电量状态"], "enumerations": [{"value": "low", "desc": "低"}, {"value": "middle", "desc": "中"}, {"value": "high", "desc": "高"}]},
+        {"key": "sensitivity", "desc": "灵敏度", "type": "enum", "access": "WR", "aliases": ["灵敏度"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "middle", "desc": "中"}, {"value": "low", "desc": "低"}]}
+      ]
+    },
+
+    "sensor.megahealth.zg": {
+      "name": "兆健康-中冠版",
+      "aliases": ["兆健康", "中冠健康", "兆健康中冠"],
+      "attributes": [
+        {"key": "enable", "desc": "使能", "type": "enum", "access": "WR", "aliases": ["使能", "启用", "禁用"], "enumerations": [{"value": "true", "desc": "启用"}, {"value": "false", "desc": "禁用"}]},
+        {"key": "heart_rate", "desc": "心率", "type": "number", "access": "R", "unit": "bpm", "aliases": ["心率", "心跳"]},
+        {"key": "blood_oxygen", "desc": "血氧", "type": "number", "access": "R", "unit": "%", "aliases": ["血氧"]},
+        {"key": "body_temp", "desc": "体温", "type": "number", "access": "R", "unit": "℃", "aliases": ["体温"]},
+        {"key": "battery_value", "desc": "电池量", "type": "number", "access": "R", "aliases": ["电池量", "电池"]},
+        {"key": "battery_state", "desc": "电量状态", "type": "enum", "access": "R", "aliases": ["电量状态"], "enumerations": [{"value": "low", "desc": "低"}, {"value": "middle", "desc": "中"}, {"value": "high", "desc": "高"}]},
+        {"key": "sensitivity", "desc": "灵敏度", "type": "enum", "access": "WR", "aliases": ["灵敏度"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "middle", "desc": "中"}, {"value": "low", "desc": "低"}]}
+      ]
+    },
+
+    "sensor.hdl_mmw_pose": {
+      "name": "HDL毫米波姿态",
+      "aliases": ["HDL毫米波姿态", "毫米波姿态", "姿态检测"],
+      "attributes": [
+        {"key": "enable", "desc": "使能", "type": "enum", "access": "WR", "aliases": ["使能", "启用", "禁用"], "enumerations": [{"value": "true", "desc": "启用"}, {"value": "false", "desc": "禁用"}]},
+        {"key": "pose", "desc": "姿态", "type": "enum", "access": "R", "aliases": ["姿态", "姿势", "站", "坐", "躺", "走"], "enumerations": [{"value": "stand", "desc": "站立"}, {"value": "sit", "desc": "坐"}, {"value": "lie", "desc": "躺"}, {"value": "walk", "desc": "走"}]},
+        {"key": "fall_alarm", "desc": "跌倒告警", "type": "enum", "access": "R", "aliases": ["跌倒告警", "跌倒", "摔倒"], "enumerations": [{"value": "true", "desc": "告警"}, {"value": "false", "desc": "正常"}]},
+        {"key": "battery_value", "desc": "电池量", "type": "number", "access": "R", "aliases": ["电池量", "电池"]},
+        {"key": "battery_state", "desc": "电量状态", "type": "enum", "access": "R", "aliases": ["电量状态"], "enumerations": [{"value": "low", "desc": "低"}, {"value": "middle", "desc": "中"}, {"value": "high", "desc": "高"}]},
+        {"key": "sensitivity", "desc": "灵敏度", "type": "enum", "access": "WR", "aliases": ["灵敏度"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "middle", "desc": "中"}, {"value": "low", "desc": "低"}]}
+      ]
+    },
+
+    "sensor.hdl_mmw_sleep": {
+      "name": "HDL毫米波睡眠",
+      "aliases": ["HDL毫米波睡眠", "毫米波睡眠", "睡眠检测"],
+      "attributes": [
+        {"key": "enable", "desc": "使能", "type": "enum", "access": "WR", "aliases": ["使能", "启用", "禁用"], "enumerations": [{"value": "true", "desc": "启用"}, {"value": "false", "desc": "禁用"}]},
+        {"key": "sleep_state", "desc": "睡眠状态", "type": "enum", "access": "R", "aliases": ["睡眠状态", "睡眠", "清醒", "浅睡", "深睡"], "enumerations": [{"value": "awake", "desc": "清醒"}, {"value": "light", "desc": "浅睡"}, {"value": "deep", "desc": "深睡"}]},
+        {"key": "breath_rate", "desc": "呼吸率", "type": "number", "access": "R", "aliases": ["呼吸率", "呼吸"]},
+        {"key": "heart_rate", "desc": "心率", "type": "number", "access": "R", "aliases": ["心率", "心跳"]},
+        {"key": "leave_bed", "desc": "离床告警", "type": "enum", "access": "R", "aliases": ["离床告警", "离床"], "enumerations": [{"value": "true", "desc": "告警"}, {"value": "false", "desc": "正常"}]},
+        {"key": "battery_value", "desc": "电池量", "type": "number", "access": "R", "aliases": ["电池量", "电池"]},
+        {"key": "battery_state", "desc": "电量状态", "type": "enum", "access": "R", "aliases": ["电量状态"], "enumerations": [{"value": "low", "desc": "低"}, {"value": "middle", "desc": "中"}, {"value": "high", "desc": "高"}]},
+        {"key": "sensitivity", "desc": "灵敏度", "type": "enum", "access": "WR", "aliases": ["灵敏度"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "middle", "desc": "中"}, {"value": "low", "desc": "低"}]}
+      ]
+    },
+
+    "sensor.environment.hailin": {
+      "name": "海林环境传感器",
+      "aliases": ["海林环境", "海林环境传感器", "海林"],
+      "attributes": [
+        {"key": "temperature", "desc": "温度", "type": "number", "access": "R", "unit": "℃", "aliases": ["温度", "室温"]},
+        {"key": "humidity", "desc": "湿度", "type": "number", "access": "R", "unit": "%", "aliases": ["湿度"]},
+        {"key": "pm25", "desc": "PM2.5", "type": "number", "access": "R", "unit": "μg/m³", "aliases": ["PM2.5"]},
+        {"key": "co2", "desc": "CO2", "type": "number", "access": "R", "unit": "ppm", "aliases": ["CO2", "二氧化碳"]},
+        {"key": "tvoc", "desc": "TVOC", "type": "number", "access": "R", "unit": "mg/m³", "aliases": ["TVOC", "挥发性有机物"]},
+        {"key": "enable", "desc": "使能", "type": "enum", "access": "WR", "aliases": ["使能", "启用", "禁用"], "enumerations": [{"value": "true", "desc": "启用"}, {"value": "false", "desc": "禁用"}]},
+        {"key": "battery_value", "desc": "电池量", "type": "number", "access": "R", "aliases": ["电池量", "电池"]},
+        {"key": "battery_state", "desc": "电量状态", "type": "enum", "access": "R", "aliases": ["电量状态"], "enumerations": [{"value": "low", "desc": "低"}, {"value": "middle", "desc": "中"}, {"value": "high", "desc": "高"}]},
+        {"key": "sensitivity", "desc": "灵敏度", "type": "enum", "access": "WR", "aliases": ["灵敏度"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "middle", "desc": "中"}, {"value": "low", "desc": "低"}]}
+      ]
+    },
+
+    "security.lock": {
+      "name": "智能门锁",
+      "aliases": ["智能门锁", "门锁", "电子门锁"],
+      "attributes": [
+        {"key": "lock_status", "desc": "锁状态", "type": "enum", "access": "R", "aliases": ["锁状态", "已锁", "未锁", "开锁", "上锁"], "enumerations": [{"value": "locked", "desc": "已锁"}, {"value": "unlocked", "desc": "未锁"}]},
+        {"key": "normal_open", "desc": "常开模式", "type": "enum", "access": "WR", "aliases": ["常开模式", "常开"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "lock_volume", "desc": "锁音量", "type": "number", "access": "WR", "unit": "%", "min": 0, "max": 100, "step": 1, "aliases": ["锁音量", "音量"]},
+        {"key": "battery_percentage", "desc": "电池百分比", "type": "number", "access": "R", "unit": "%", "aliases": ["电量", "电池"]},
+        {"key": "open_record", "desc": "开门记录", "type": "string", "access": "R", "aliases": ["开门记录", "记录"]}
+      ]
+    },
+
+    "security.faceLock": {
+      "name": "智能人脸门锁",
+      "aliases": ["人脸门锁", "人脸锁", "智能人脸门锁"],
+      "attributes": [
+        {"key": "lock_status", "desc": "锁状态", "type": "enum", "access": "R", "aliases": ["锁状态", "已锁", "未锁"], "enumerations": [{"value": "locked", "desc": "已锁"}, {"value": "unlocked", "desc": "未锁"}]},
+        {"key": "face_recognize", "desc": "人脸识别", "type": "enum", "access": "WR", "aliases": ["人脸识别", "人脸"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "battery_percentage", "desc": "电池百分比", "type": "number", "access": "R", "unit": "%", "aliases": ["电量", "电池"]}
+      ]
+    },
+
+    "security.videoLock": {
+      "name": "智能视频门锁",
+      "aliases": ["视频门锁", "视频锁", "智能视频门锁"],
+      "attributes": [
+        {"key": "lock_status", "desc": "锁状态", "type": "enum", "access": "R", "aliases": ["锁状态", "已锁", "未锁"], "enumerations": [{"value": "locked", "desc": "已锁"}, {"value": "unlocked", "desc": "未锁"}]},
+        {"key": "video_call", "desc": "视频通话", "type": "enum", "access": "WR", "aliases": ["视频通话", "通话"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "snapshot", "desc": "抓拍", "type": "enum", "access": "WR", "aliases": ["抓拍", "拍照"], "enumerations": [{"value": "on", "desc": "抓拍"}]},
+        {"key": "battery_percentage", "desc": "电池百分比", "type": "number", "access": "R", "unit": "%", "aliases": ["电量", "电池"]}
+      ]
+    },
+
+    "security.ipcam.imou": {
+      "name": "IP摄像头(乐橙)",
+      "aliases": ["乐橙摄像头", "IP摄像头", "乐橙"],
+      "attributes": [
+        {"key": "security", "desc": "布防撤防", "type": "enum", "access": "WR", "aliases": ["布防", "撤防", "布防撤防"], "enumerations": [{"value": "arm", "desc": "布防"}, {"value": "disarm", "desc": "撤防"}]},
+        {"key": "ptz", "desc": "云台控制", "type": "enum", "access": "WR", "aliases": ["云台", "云台控制", "上", "下", "左", "右", "停止"], "enumerations": [{"value": "up", "desc": "上"}, {"value": "down", "desc": "下"}, {"value": "left", "desc": "左"}, {"value": "right", "desc": "右"}, {"value": "stop", "desc": "停止"}]},
+        {"key": "snapshot", "desc": "抓拍", "type": "enum", "access": "WR", "aliases": ["抓拍", "拍照"], "enumerations": [{"value": "on", "desc": "抓拍"}]}
+      ]
+    },
+
+    "security.ipcam-rtsp": {
+      "name": "IP摄像头(RTSP)",
+      "aliases": ["RTSP摄像头", "RTSP", "IP摄像头"],
+      "attributes": [
+        {"key": "url", "desc": "播放地址", "type": "string", "access": "R", "aliases": ["播放地址", "地址", "URL"]}
+      ]
+    },
+
+    "security.ipcam.ez": {
+      "name": "IP摄像头(EZ)",
+      "aliases": ["EZ摄像头", "萤石摄像头", "EZ"],
+      "attributes": [
+        {"key": "security", "desc": "布防撤防", "type": "enum", "access": "WR", "aliases": ["布防", "撤防", "布防撤防"], "enumerations": [{"value": "arm", "desc": "布防"}, {"value": "disarm", "desc": "撤防"}]}
+      ]
+    },
+
+    "acst.ac.jinmao": {
+      "name": "金茂KNX空调",
+      "aliases": ["金茂KNX空调", "金茂空调", "KNX空调"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "打开", "关闭"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "mode", "desc": "模式", "type": "enum", "access": "WR", "aliases": ["模式", "制冷", "制热"], "enumerations": [{"value": "cool", "desc": "制冷"}, {"value": "heat", "desc": "制热"}]},
+        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 0, "max": 30, "step": 1, "aliases": ["温度", "设定温度"]},
+        {"key": "room_temp", "desc": "室温", "type": "number", "access": "R", "unit": "℃", "aliases": ["室温", "当前温度"]},
+        {"key": "room_humidity", "desc": "室内湿度", "type": "number", "access": "R", "unit": "%", "aliases": ["室内湿度", "湿度"]},
+        {"key": "group_id", "desc": "模块id", "type": "string", "access": "R", "aliases": ["模块id", "模块"]}
+      ]
+    },
+
+    "energy.electric_rst": {
+      "name": "电能三相",
+      "aliases": ["电能三相", "三相电表", "三相电能"],
+      "attributes": [
+        {"key": "power_a", "desc": "A相功率", "type": "number", "access": "R", "unit": "kW", "aliases": ["A相功率", "功率A"]},
+        {"key": "power_b", "desc": "B相功率", "type": "number", "access": "R", "unit": "kW", "aliases": ["B相功率", "功率B"]},
+        {"key": "power_c", "desc": "C相功率", "type": "number", "access": "R", "unit": "kW", "aliases": ["C相功率", "功率C"]},
+        {"key": "voltage_a", "desc": "A相电压", "type": "number", "access": "R", "unit": "V", "aliases": ["A相电压", "电压A"]},
+        {"key": "voltage_b", "desc": "B相电压", "type": "number", "access": "R", "unit": "V", "aliases": ["B相电压", "电压B"]},
+        {"key": "voltage_c", "desc": "C相电压", "type": "number", "access": "R", "unit": "V", "aliases": ["C相电压", "电压C"]},
+        {"key": "current_a", "desc": "A相电流", "type": "number", "access": "R", "unit": "mA", "aliases": ["A相电流", "电流A"]},
+        {"key": "current_b", "desc": "B相电流", "type": "number", "access": "R", "unit": "mA", "aliases": ["B相电流", "电流B"]},
+        {"key": "current_c", "desc": "C相电流", "type": "number", "access": "R", "unit": "mA", "aliases": ["C相电流", "电流C"]},
+        {"key": "electricity_a", "desc": "A相电量", "type": "number", "access": "R", "unit": "kW·h", "aliases": ["A相电量", "电量A"]},
+        {"key": "electricity_b", "desc": "B相电量", "type": "number", "access": "R", "unit": "kW·h", "aliases": ["B相电量", "电量B"]},
+        {"key": "electricity_c", "desc": "C相电量", "type": "number", "access": "R", "unit": "kW·h", "aliases": ["C相电量", "电量C"]},
+        {"key": "total_electricity", "desc": "总电量", "type": "number", "access": "R", "unit": "kW·h", "aliases": ["总电量", "总电能"]}
+      ]
+    },
+
+    "energy.inverter_rst": {
+      "name": "逆变器三相",
+      "aliases": ["逆变器三相", "三相逆变器"],
+      "attributes": [
+        {"key": "power_a", "desc": "A相功率", "type": "number", "access": "R", "unit": "kW", "aliases": ["A相功率", "功率A"]},
+        {"key": "power_b", "desc": "B相功率", "type": "number", "access": "R", "unit": "kW", "aliases": ["B相功率", "功率B"]},
+        {"key": "power_c", "desc": "C相功率", "type": "number", "access": "R", "unit": "kW", "aliases": ["C相功率", "功率C"]},
+        {"key": "voltage_a", "desc": "A相电压", "type": "number", "access": "R", "unit": "V", "aliases": ["A相电压", "电压A"]},
+        {"key": "voltage_b", "desc": "B相电压", "type": "number", "access": "R", "unit": "V", "aliases": ["B相电压", "电压B"]},
+        {"key": "voltage_c", "desc": "C相电压", "type": "number", "access": "R", "unit": "V", "aliases": ["C相电压", "电压C"]},
+        {"key": "current_a", "desc": "A相电流", "type": "number", "access": "R", "unit": "mA", "aliases": ["A相电流", "电流A"]},
+        {"key": "current_b", "desc": "B相电流", "type": "number", "access": "R", "unit": "mA", "aliases": ["B相电流", "电流B"]},
+        {"key": "current_c", "desc": "C相电流", "type": "number", "access": "R", "unit": "mA", "aliases": ["C相电流", "电流C"]},
+        {"key": "electricity_a", "desc": "A相电量", "type": "number", "access": "R", "unit": "kW·h", "aliases": ["A相电量", "电量A"]},
+        {"key": "electricity_b", "desc": "B相电量", "type": "number", "access": "R", "unit": "kW·h", "aliases": ["B相电量", "电量B"]},
+        {"key": "electricity_c", "desc": "C相电量", "type": "number", "access": "R", "unit": "kW·h", "aliases": ["C相电量", "电量C"]},
+        {"key": "total_electricity", "desc": "总电量", "type": "number", "access": "R", "unit": "kW·h", "aliases": ["总电量", "总电能"]},
+        {"key": "output_power", "desc": "输出功率", "type": "number", "access": "R", "unit": "kW", "aliases": ["输出功率", "功率"]}
+      ]
+    },
+
+    "energy.hdl_inverter": {
+      "name": "HDL逆变器",
+      "aliases": ["HDL逆变器", "HDL光伏逆变器"],
+      "attributes": [
+        {"key": "output_power", "desc": "输出功率", "type": "number", "access": "R", "unit": "kW", "aliases": ["输出功率", "功率"]},
+        {"key": "input_voltage", "desc": "输入电压", "type": "number", "access": "R", "unit": "V", "aliases": ["输入电压", "电压"]},
+        {"key": "output_voltage", "desc": "输出电压", "type": "number", "access": "R", "unit": "V", "aliases": ["输出电压", "电压"]},
+        {"key": "battery_percentage", "desc": "电池百分比", "type": "number", "access": "R", "unit": "%", "aliases": ["电量", "电池"]},
+        {"key": "run_status", "desc": "运行状态", "type": "enum", "access": "R", "aliases": ["运行状态", "状态"], "enumerations": [{"value": "normal", "desc": "正常"}, {"value": "fault", "desc": "故障"}]}
+      ]
+    },
+
+    "energy.hdl_inverter_rst": {
+      "name": "HDL逆变器三相",
+      "aliases": ["HDL逆变器三相", "HDL三相逆变器"],
+      "attributes": [
+        {"key": "output_power_a", "desc": "A相输出功率", "type": "number", "access": "R", "unit": "kW", "aliases": ["A相输出功率", "输出功率A"]},
+        {"key": "output_power_b", "desc": "B相输出功率", "type": "number", "access": "R", "unit": "kW", "aliases": ["B相输出功率", "输出功率B"]},
+        {"key": "output_power_c", "desc": "C相输出功率", "type": "number", "access": "R", "unit": "kW", "aliases": ["C相输出功率", "输出功率C"]},
+        {"key": "input_voltage_a", "desc": "A相输入电压", "type": "number", "access": "R", "unit": "V", "aliases": ["A相输入电压", "输入电压A"]},
+        {"key": "input_voltage_b", "desc": "B相输入电压", "type": "number", "access": "R", "unit": "V", "aliases": ["B相输入电压", "输入电压B"]},
+        {"key": "input_voltage_c", "desc": "C相输入电压", "type": "number", "access": "R", "unit": "V", "aliases": ["C相输入电压", "输入电压C"]},
+        {"key": "output_voltage_a", "desc": "A相输出电压", "type": "number", "access": "R", "unit": "V", "aliases": ["A相输出电压", "输出电压A"]},
+        {"key": "output_voltage_b", "desc": "B相输出电压", "type": "number", "access": "R", "unit": "V", "aliases": ["B相输出电压", "输出电压B"]},
+        {"key": "output_voltage_c", "desc": "C相输出电压", "type": "number", "access": "R", "unit": "V", "aliases": ["C相输出电压", "输出电压C"]},
+        {"key": "battery_percentage", "desc": "电池百分比", "type": "number", "access": "R", "unit": "%", "aliases": ["电量", "电池"]},
+        {"key": "run_status", "desc": "运行状态", "type": "enum", "access": "R", "aliases": ["运行状态", "状态"], "enumerations": [{"value": "normal", "desc": "正常"}, {"value": "fault", "desc": "故障"}]}
+      ]
+    },
+
+    "energy.hdl_bms": {
+      "name": "HDL BMS电池管理",
+      "aliases": ["HDL BMS", "BMS", "电池管理"],
+      "attributes": [
+        {"key": "battery_percentage", "desc": "电池百分比", "type": "number", "access": "R", "unit": "%", "aliases": ["电量", "电池百分比"]},
+        {"key": "battery_voltage", "desc": "电池电压", "type": "number", "access": "R", "unit": "V", "aliases": ["电池电压", "电压"]},
+        {"key": "battery_current", "desc": "电池电流", "type": "number", "access": "R", "unit": "A", "aliases": ["电池电流", "电流"]},
+        {"key": "battery_temp", "desc": "电池温度", "type": "number", "access": "R", "unit": "℃", "aliases": ["电池温度", "温度"]},
+        {"key": "run_status", "desc": "运行状态", "type": "enum", "access": "R", "aliases": ["运行状态", "状态"], "enumerations": [{"value": "on", "desc": "运行"}]},
+        {"key": "fault_code", "desc": "故障码", "type": "string", "access": "R", "aliases": ["故障码", "故障"]}
+      ]
+    },
+
+    "energy.inverter.jinmao": {
+      "name": "逆变器(金茂)",
+      "aliases": ["金茂逆变器", "逆变器"],
+      "attributes": [
+        {"key": "output_power", "desc": "输出功率", "type": "number", "access": "R", "unit": "kW", "aliases": ["输出功率", "功率"]},
+        {"key": "battery_percentage", "desc": "电池百分比", "type": "number", "access": "R", "unit": "%", "aliases": ["电量", "电池"]},
+        {"key": "run_status", "desc": "运行状态", "type": "enum", "access": "R", "aliases": ["运行状态", "状态"], "enumerations": [{"value": "on", "desc": "运行"}]}
+      ]
+    },
+
+    "energy.inverter.deye": {
+      "name": "逆变器(德业)",
+      "aliases": ["德业逆变器", "逆变器"],
+      "attributes": [
+        {"key": "output_power", "desc": "输出功率", "type": "number", "access": "R", "unit": "kW", "aliases": ["输出功率", "功率"]},
+        {"key": "battery_percentage", "desc": "电池百分比", "type": "number", "access": "R", "unit": "%", "aliases": ["电量", "电池"]},
+        {"key": "run_status", "desc": "运行状态", "type": "enum", "access": "R", "aliases": ["运行状态", "状态"], "enumerations": [{"value": "on", "desc": "运行"}]}
+      ]
+    },
+
+    "energy.inverter_og": {
+      "name": "逆变器(OG)",
+      "aliases": ["OG逆变器", "逆变器"],
+      "attributes": [
+        {"key": "output_power", "desc": "输出功率", "type": "number", "access": "R", "unit": "kW", "aliases": ["输出功率", "功率"]},
+        {"key": "battery_percentage", "desc": "电池百分比", "type": "number", "access": "R", "unit": "%", "aliases": ["电量", "电池"]},
+        {"key": "run_status", "desc": "运行状态", "type": "enum", "access": "R", "aliases": ["运行状态", "状态"], "enumerations": [{"value": "on", "desc": "运行"}]}
+      ]
+    },
+
+    "other.switch.jinmao": {
+      "name": "金茂开关",
+      "aliases": ["金茂开关", "金茂"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "打开", "关闭"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "delay", "desc": "延时", "type": "number", "access": "WR", "unit": "s", "min": 0, "max": 3600, "step": 1, "aliases": ["延时", "延迟", "定时"]}
+      ]
+    },
+
+    "other.switch_water.jinmao": {
+      "name": "金茂水开关",
+      "aliases": ["金茂水开关", "水开关"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "通水", "断水"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "delay", "desc": "延时", "type": "number", "access": "WR", "unit": "s", "min": 0, "max": 3600, "step": 1, "aliases": ["延时", "延迟", "定时"]}
+      ]
+    },
+
+    "other.switch_electric.jinmao": {
+      "name": "金茂电开关",
+      "aliases": ["金茂电开关", "电开关"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "通电", "断电"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "delay", "desc": "延时", "type": "number", "access": "WR", "unit": "s", "min": 0, "max": 3600, "step": 1, "aliases": ["延时", "延迟", "定时"]}
+      ]
+    },
+
+    "other.series": {
+      "name": "系列开关",
+      "aliases": ["系列开关", "系列"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "打开", "关闭"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]}
+      ]
+    },
+
+    "other.neutral.switch": {
+      "name": "零线开关",
+      "aliases": ["零线开关", "零线"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "打开", "关闭"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]}
+      ]
+    },
+
+    "hotel.doorbell_card": {
+      "name": "发卡门铃",
+      "aliases": ["发卡门铃", "发卡器", "门铃发卡"],
+      "attributes": [
+        {"key": "write_card", "desc": "发卡", "type": "enum", "access": "WR", "aliases": ["发卡", "写卡", "增加", "删除", "清空", "读取"], "enumerations": [{"value": "add", "desc": "增加"}, {"value": "delete", "desc": "删除"}, {"value": "clear", "desc": "清空"}, {"value": "read", "desc": "读取"}]},
+        {"key": "read_config", "desc": "读取配置", "type": "string", "access": "R", "aliases": ["读取配置", "配置"]},
+        {"key": "read_card_log", "desc": "读取门铃历史刷卡开门记录", "type": "string", "access": "R", "aliases": ["刷卡记录", "开门记录", "历史记录"]},
+        {"key": "update_card_device", "desc": "更新发卡器信息", "type": "enum", "access": "WR", "aliases": ["更新发卡器", "发卡器信息"], "enumerations": [{"value": "on", "desc": "更新"}]},
+        {"key": "update_card_key", "desc": "更新发卡密钥", "type": "enum", "access": "WR", "aliases": ["更新密钥", "发卡密钥"], "enumerations": [{"value": "on", "desc": "更新"}]},
+        {"key": "online_open_door_log", "desc": "离线重现上线后的刷卡开门记录", "type": "string", "access": "R", "aliases": ["离线开门记录", "上线记录"]},
+        {"key": "open_door_notice", "desc": "发卡开门校验通知", "type": "string", "access": "R", "aliases": ["开门校验", "校验通知"]},
+        {"key": "open_door_check", "desc": "门铃开门服务器校验结果", "type": "enum", "access": "W", "aliases": ["开门校验结果", "校验"], "enumerations": [{"value": "on", "desc": "校验"}]}
+      ]
+    },
+
+    "hotel.efan": {
+      "name": "排气扇",
+      "aliases": ["排气扇", "排风扇", "换气扇"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "打开", "关闭"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]}
+      ]
+    }
+  },
+
+  "_fallback": {
+    "_comment": "未在 schemas 中定义的 spk 走 fallback，仅支持 on_off 开关",
+    "attributes": [
+      {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "打开", "关闭", "开启", "关掉"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]}
+    ]
+  },
+
+  "_color_presets": {
+    "_comment": "中文颜色名 → RGB 值预设表，light.rgb/light.rgbw/light.rgbcw 等彩灯共用",
+    "红色": "255,0,0",
+    "红灯": "255,0,0",
+    "红光": "255,0,0",
+    "绿色": "0,255,0",
+    "绿灯": "0,255,0",
+    "绿光": "0,255,0",
+    "蓝色": "0,0,255",
+    "蓝灯": "0,0,255",
+    "蓝光": "0,0,255",
+    "黄色": "255,255,0",
+    "黄灯": "255,255,0",
+    "暖黄": "255,200,100",
+    "暖光": "255,200,100",
+    "暖色": "255,200,100",
+    "暖白": "255,200,100",
+    "橙色": "255,165,0",
+    "橙光": "255,165,0",
+    "紫色": "128,0,128",
+    "紫光": "128,0,128",
+    "白色": "255,255,255",
+    "白光": "255,255,255",
+    "冷白": "200,200,255",
+    "冷光": "200,200,255",
+    "冷色": "200,200,255",
+    "青色": "0,255,255",
+    "青光": "0,255,255",
+    "粉色": "255,192,203",
+    "粉光": "255,192,203"
+  },
+
+  "_position_keywords": {
+    "_comment": "位置/开度中文关键词映射，curtain.roller/curtain.shades 等共用",
+    "全开": "100",
+    "全关": "0",
+    "完全打开": "100",
+    "完全关闭": "0",
+    "一半": "50",
+    "半开": "50",
+    "三分之一": "33",
+    "三分之二": "66",
+    "四分之一": "25",
+    "四分之三": "75"
+  },
+
+  "_fan_speed_keywords": {
+    "_comment": "风速中文关键词映射，hvac.ac/hvac.fan 等共用",
+    "高档": "high",
+    "高速": "high",
+    "最大": "high",
+    "中档": "medium",
+    "中速": "medium",
+    "低档": "low",
+    "低速": "low",
+    "最小": "low",
+    "自动": "auto",
+    "自动档": "auto"
+  }
+}

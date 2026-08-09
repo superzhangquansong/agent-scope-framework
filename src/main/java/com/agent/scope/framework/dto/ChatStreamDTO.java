@@ -34,9 +34,8 @@ public class ChatStreamDTO implements Serializable {
     private String sessionId;
 
     /**
-     * 用户 ID（必填）
+     * 用户 ID（由 Controller 从 X-Session-Token 解析注入，前端可不传）
      */
-    @NotBlank(message = "用户信息不能为空")
     private String userId;
 
     /**
