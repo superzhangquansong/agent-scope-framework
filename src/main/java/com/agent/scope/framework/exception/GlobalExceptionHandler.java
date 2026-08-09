@@ -11,7 +11,9 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 
+import java.io.IOException;
 import java.util.stream.Collectors;
 
 /**
@@ -132,6 +134,27 @@ public class GlobalExceptionHandler {
     public Response<Void> handleAccessDeniedException(AccessDeniedException e) {
         log.error("[GlobalException] 访问拒绝: {}", e.getMessage(), e);
         return Response.error(HttpStatus.FORBIDDEN.value(), "Access Denied");
+    }
+
+    // ==================== SSE 客户端断开异常 ====================
+
+    /**
+     * 处理 SSE 客户端断开连接异常。
+     * <p>
+     * 当 SSE 流式响应过程中客户端主动断开连接（如关闭页面、切换会话、超时）时，
+     * Spring 抛出 {@link AsyncRequestNotUsableException}（包装了 {@link IOException} Broken pipe）。
+     * </p>
+     * <p>
+     * <b>返回 void</b>：连接已不可用，无需也无法向客户端写入响应体。
+     * 若返回 {@link Response} 对象，Spring 会尝试以 {@code text/event-stream} 内容类型序列化，
+     * 导致 {@code HttpMessageNotWritableException: No converter for [class Response] with preset Content-Type 'text/event-stream'}。
+     * </p>
+     *
+     * @param e SSE 客户端断开异常
+     */
+    @ExceptionHandler(AsyncRequestNotUsableException.class)
+    public void handleAsyncRequestNotUsable(AsyncRequestNotUsableException e) {
+        log.debug("[GlobalException] SSE客户端断开连接: {}", e.getMessage());
     }
 
     // ==================== 兜底异常 ====================

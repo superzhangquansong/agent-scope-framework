@@ -35,7 +35,7 @@ import static com.agent.scope.framework.utils.ChatUtils.extractAccessToken;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/v1/chat")
+    @RequestMapping("/api/v1/chat")
 @RequiredArgsConstructor
 @Validated
 public class ChatController {
@@ -130,18 +130,47 @@ public class ChatController {
     @Auditable(action = "PERMISSION_CONFIRM", target = "HITL权限确认")
     @PostMapping(value = "/confirm", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter confirm(@Validated @RequestBody PermissionConfirmDTO dto,
-                              @RequestHeader(value = "Authorization", required = true) String authHeader
+                              @RequestHeader(value = "Authorization", required = false) String authHeader,
+                              @RequestHeader(value = "X-Session-Token", required = false) String sessionToken
     ) {
         if (!SSE_SEMAPHORE.tryAcquire()) {
             throw new BusinessException(ErrorCode.RATE_LIMITED,
                     "SSE并发连接数已达上限: " + MAX_CONCURRENT_SSE);
         }
+
+        // 1. 优先从 X-Session-Token 解析用户上下文（HDL 登录流程）
+        if (sessionToken != null && !sessionToken.isEmpty()) {
+            UserSession session = sessionManager.getSession(sessionToken);
+            if (session != null && session.isLoggedIn()) {
+                // 注入 userId 和 hdlAccessToken（若 DTO 中未传入）
+                if (dto.getUserId() == null || dto.getUserId().isEmpty()) {
+                    dto.setUserId(session.getLoginName());
+                }
+                if (dto.getAccessToken() == null) {
+                    dto.setAccessToken(session.getHdlAccessToken());
+                }
+                if (dto.getHouseId() == null && session.getCurrentHomeId() != null) {
+                    dto.setHouseId(session.getCurrentHomeId());
+                }
+                log.info("[Chat] 权限确认-从 X-Session-Token 解析用户: loginName={}, houseId={}",
+                        session.getLoginName(), dto.getHouseId());
+            }
+        }
+
+        // 2. 兜底：从 Authorization 头提取 accessToken
+        if (dto.getAccessToken() == null && authHeader != null) {
+            dto.setAccessToken(extractAccessToken(authHeader));
+        }
+
+        // 3. userId 必填校验
+        if (dto.getUserId() == null || dto.getUserId().isEmpty()) {
+            SSE_SEMAPHORE.release();
+            throw new BusinessException(ErrorCode.PARAM_INVALID, "用户信息不能为空，请先登录");
+        }
+
         log.info("[Chat] 权限确认: sessionId={}, userId={}, confirms={}",
                 dto.getSessionId(), dto.getUserId(),
                 dto.getConfirms() != null ? dto.getConfirms().size() : 0);
-
-        String accessToken = extractAccessToken(authHeader);
-        dto.setAccessToken(accessToken);
 
         SseEmitter emitter = new SseEmitter(SSE_EMITTER_TIMEOUT);
         // 通过 emitter 回调在流结束/超时/异常时释放信号量

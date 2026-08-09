@@ -545,10 +545,12 @@ function DraggablePanel({
               </ReactMarkdown>
             </div>
           )}
-          {/* 其他路由：无结构化界面时展示 LLM 回复文字（纯文本） */}
+          {/* 其他路由：无结构化界面时展示 LLM 回复文字（流式 Markdown 渲染） */}
           {!hasStructuredResult && !isKnowledgeRoute && message.content && message.content !== '正在思考...' && (
-            <div className={`panel-text ${message.error ? 'text-red-300' : 'text-slate-100'}`}>
-              {message.content}
+            <div className={`panel-text markdown-body ${message.error ? 'text-red-300' : 'text-slate-100'}`}>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
+                {message.content}
+              </ReactMarkdown>
             </div>
           )}
           {/* 用户消息携带的图片（多模态）：在文字下方以缩略图网格展示用户上传的图片 */}

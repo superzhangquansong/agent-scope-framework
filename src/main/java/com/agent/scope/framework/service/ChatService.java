@@ -220,7 +220,7 @@ public class ChatService {
                 log.warn("[Chat] 中断时发送 agent_end 失败: {}", e.getMessage());
             }
             sendDone(emitter);
-            emitter.complete();
+            safeComplete(emitter);
         }
 
         // 3. 不立即 dispose 订阅，给框架时间在 ReAct 检查点优雅中断并保存 AgentState
@@ -446,23 +446,16 @@ public class ChatService {
                                 log.warn("[Chat] 发送 agent_end 失败: {}", e.getMessage());
                             }
                             sendDone(emitter);
-                            emitter.complete();
+                            safeComplete(emitter);
                             return;
                         }
 
-                        // 权限暂停场景：Agent 在恢复执行后再次触发 HITL（如 LLM 重试工具调用），
-                        // 不发送 agent_end，保持 SSE 等待用户第二次确认
+                        // 权限暂停场景：RequireUserConfirmHandler 已在事件链中发送 permission_paused，
+                        // 此处仅关闭 emitter，不再重复发送
                         if (recorder.permissionPaused) {
                             log.info("[Chat] 权限恢复后再次触发 HITL 暂停: sessionId={}, 耗时={}ms",
                                     sessionId, totalDurationMs);
-                            try {
-                                sendEvent(emitter, SSE_EVENT_PERMISSION_PAUSED, sessionId, Map.of(
-                                        "message", MSG_PERMISSION_PAUSED));
-                            } catch (IOException e) {
-                                log.warn("[Chat] 发送 permission_paused 失败: {}", e.getMessage());
-                            }
-                            sendDone(emitter);
-                            emitter.complete();
+                            safeComplete(emitter);
                             return;
                         }
 
@@ -476,8 +469,13 @@ public class ChatService {
                         } catch (IOException e) {
                             log.warn("[Chat] 发送 agent_end 失败: {}", e.getMessage());
                         }
-                        sendDone(emitter);
-                        emitter.complete();
+                        try {
+                            sendDone(emitter);
+                            safeComplete(emitter);
+                        } catch (Exception e) {
+                            log.warn("[Chat] doOnComplete 关闭 SSE 失败: {}", e.getMessage());
+                            try { emitter.completeWithError(e); } catch (Exception ignored) {}
+                        }
                     })
                     .doOnError(err -> {
                         activeEmitters.remove(sessionId);
@@ -497,8 +495,13 @@ public class ChatService {
                                             "message", err.getMessage() != null ? err.getMessage() : MSG_AGENT_RESUME_ERROR)));
                         } catch (IOException ignored) {
                         }
-                        sendDone(emitter);
-                        emitter.complete();
+                        try {
+                            sendDone(emitter);
+                            safeComplete(emitter);
+                        } catch (Exception e) {
+                            log.warn("[Chat] doOnError 关闭 SSE 失败: {}", e.getMessage());
+                            try { emitter.completeWithError(e); } catch (Exception ignored) {}
+                        }
                     })
                     .doOnCancel(() -> {
                         activeEmitters.remove(sessionId);
@@ -525,7 +528,7 @@ public class ChatService {
             } catch (IOException ignored) {
             }
             sendDone(emitter);
-            emitter.complete();
+            safeComplete(emitter);
         }
     }
 
@@ -604,17 +607,11 @@ public class ChatService {
                             return;
                         }
 
-                        // 权限暂停场景：Agent 因 HITL 确认而暂停，不发送 agent_end
+                        // 权限暂停场景：RequireUserConfirmHandler 已在事件链中发送 permission_paused，
+                        // 此处仅关闭 emitter，不再重复发送（避免冗余 event + [DONE] 导致前端误判流结束）
                         if (recorder.permissionPaused) {
                             log.info("[Chat] Agent 因权限确认暂停: sessionId={}, 耗时={}ms", sessionId, totalDurationMs);
-                            try {
-                                sendEvent(emitter, SSE_EVENT_PERMISSION_PAUSED, sessionId, Map.of(
-                                        "message", MSG_PERMISSION_PAUSED));
-                            } catch (IOException e) {
-                                log.warn("[Chat] 发送 permission_paused 失败: {}", e.getMessage());
-                            }
-                            sendDone(emitter);
-                            emitter.complete();
+                            safeComplete(emitter);
                             return;
                         }
 
@@ -629,8 +626,12 @@ public class ChatService {
                         } catch (IOException e) {
                             log.warn("[Chat] 发送 agent_end 失败: {}", e.getMessage());
                         }
-                        sendDone(emitter);
-                        emitter.complete();
+                        try {
+                            sendDone(emitter);
+                            safeComplete(emitter);
+                        } catch (Exception e) {
+                            log.warn("[Chat] doOnComplete 关闭 SSE 失败: {}", e.getMessage());
+                        }
                     })
                     .doOnError(err -> {
                         activeEmitters.remove(sessionId);
@@ -666,8 +667,12 @@ public class ChatService {
                             } catch (IOException ignored) {
                             }
                         }
-                        sendDone(emitter);
-                        emitter.complete();
+                        try {
+                            sendDone(emitter);
+                            safeComplete(emitter);
+                        } catch (Exception e) {
+                            log.warn("[Chat] doOnError 关闭 SSE 失败: {}", e.getMessage());
+                        }
                     })
                     .doOnCancel(() -> {
                         // cancel 信号：interruptSession 超时兜底 dispose 或客户端断开连接时触发
@@ -698,7 +703,7 @@ public class ChatService {
             } catch (IOException ignored) {
             }
             sendDone(emitter);
-            emitter.complete();
+            safeComplete(emitter);
         }
     }
 
@@ -726,6 +731,9 @@ public class ChatService {
 
                 sendEvent(emitter, SSE_EVENT_PERMISSION_PAUSED, sessionId, Map.of(
                         "message", MSG_ASKING_RESIDUAL));
+            } catch (IllegalStateException e) {
+                // Emitter已关闭（客户端断开），无需重发权限确认
+                log.debug("[Chat] 重新发送 permission_ask 失败(emitter已关闭): sessionId={}", sessionId);
             } catch (IOException e) {
                 log.warn("[Chat] 重新发送 permission_ask 失败: {}", e.getMessage());
             }
@@ -984,7 +992,13 @@ public class ChatService {
         }
 
         String json = toJson(event);
-        emitter.send(SseEmitter.event().name(type).data(json));
+        try {
+            emitter.send(SseEmitter.event().name(type).data(json));
+        } catch (IllegalStateException e) {
+            // Emitter已关闭（客户端断开、会话中断或已完成），包装为IOException供调用方统一处理
+            // 不包装则IllegalStateException会绕过调用方的catch(IOException)导致错误级联
+            throw new IOException("SSE Emitter已关闭", e);
+        }
         log.debug("[SSE] 发送事件: type={}, sessionId={}", type, sessionId);
     }
 
@@ -996,8 +1010,29 @@ public class ChatService {
     private void sendDone(SseEmitter emitter) {
         try {
             emitter.send(SseEmitter.event().name("done").data("[DONE]"));
+        } catch (IllegalStateException e) {
+            // Emitter已关闭（客户端断开、会话中断或已完成），忽略重复关闭
+            log.debug("[SSE] 发送 [DONE] 失败(emitter已关闭)");
         } catch (IOException e) {
             log.warn("[SSE] 发送 [DONE] 失败: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 安全关闭 SSE Emitter。
+     * <p>
+     * 当 Emitter 已被关闭（客户端断开、会话中断、权限暂停等场景）时，
+     * {@code emitter.complete()} 会抛出 {@link IllegalStateException}（ResponseBodyEmitter has already completed）。
+     * 本方法捕获该异常并降级为 debug 日志，避免错误级联到 doOnError 导致 {@code ErrorCallbackNotImplemented}。
+     * </p>
+     *
+     * @param emitter SSE 发射器
+     */
+    private void safeComplete(SseEmitter emitter) {
+        try {
+            emitter.complete();
+        } catch (IllegalStateException e) {
+            log.debug("[SSE] Emitter已关闭，complete调用忽略");
         }
     }
 
@@ -1021,7 +1056,7 @@ public class ChatService {
             log.warn("[SSE] 发送限流错误事件失败: {}", e.getMessage());
         }
         sendDone(emitter);
-        emitter.complete();
+        safeComplete(emitter);
     }
 
     /**

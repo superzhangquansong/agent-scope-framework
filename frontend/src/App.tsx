@@ -11,6 +11,8 @@ import {
   type ResultData,
   type AgentStepData,
   type ImageInfo,
+  type PermissionPausedData,
+  confirmPermission,
 } from './api/client';
 import { useSSE } from './hooks/useSSE';
 import { useVoiceAssistant } from './hooks/useVoiceAssistant';
@@ -196,6 +198,14 @@ export default function App() {
   const sessionStatusRef = useRef<SessionStatus | null>(null);
   /** 当前发送的文本（避免 onNeedSelectHome 闭包中 messages 过期，导致 pendingMessage 丢失） */
   const pendingInputRef = useRef<string>('');
+  /** HITL 权限确认对话框数据 */
+  const [permissionDialog, setPermissionDialog] = useState<{
+    sessionId: string;
+    message: string;
+    toolCalls: Array<{ toolCallId: string; toolName: string }>;
+  } | null>(null);
+  /** 确认请求进行中（防止用户在 confirm SSE 流期间输入） */
+  const [confirmPending, setConfirmPending] = useState(false);
   useEffect(() => {
     sessionStatusRef.current = sessionStatus;
   }, [sessionStatus]);
@@ -206,7 +216,9 @@ export default function App() {
   }, []);
 
   // ===== SSE 回调（由 useSSE hook 管理取消与 sending 状态） =====
-  const { send, sending } = useSSE({
+  /** 存储 abort 函数引用，供 onPermissionPaused 回调中断 SSE 流 */
+  const abortSseRef = useRef<() => void>(() => {});
+  const { send, abort, sending, callbacksRef: sseCallbacksRef } = useSSE({
     onThinking: () => {
       const id = streamingMsgIdRef.current;
       if (id) updateMessage(id, m => ({ ...m, content: '正在思考...' }));
@@ -408,7 +420,84 @@ export default function App() {
       setHomeList(homes);
       setHomeSelectOpen(true);
     },
+    onPermissionPaused: (data: PermissionPausedData) => {
+      // HITL 权限确认暂停：显示确认/取消弹框
+      const toolCalls = (data?.toolCalls ?? []).map(tc => ({
+        toolCallId: tc.toolCallId,
+        toolName: tc.toolName,
+      }));
+      setPermissionDialog({
+        sessionId: getSessionUuid(),
+        message: data?.message || '操作需要您的确认',
+        toolCalls,
+      });
+      // 中断当前 SSE 流，释放 sending 状态（后端将在 confirm 接口恢复执行）
+      abortSseRef.current();
+      // 更新消息状态，允许用户操作确认弹框
+      const id = streamingMsgIdRef.current;
+      if (id) {
+        updateMessage(id, m => ({
+          ...m,
+          content: data?.message || '请确认以下操作',
+          streaming: false,
+        }));
+      }
+    },
+    onDone: () => {
+      // SSE 流结束：关闭当前 streaming 消息的流式状态
+      const id = streamingMsgIdRef.current;
+      if (id) {
+        updateMessage(id, m => ({ ...m, streaming: false }));
+      }
+    },
   });
+
+  // 将 abort 存入 ref（必须在 useSSE 之后执行）
+  abortSseRef.current = abort;
+
+  // ===== HITL 权限确认处理 =====
+  /** 用户点击"确认"：调用 /api/v1/chat/confirm 恢复 Agent 执行 */
+  const handlePermissionConfirm = useCallback(async () => {
+    if (!permissionDialog) return;
+    const { sessionId, toolCalls } = permissionDialog;
+    const userId = sessionStatusRef.current?.loginName || '';
+    const houseId = sessionStatusRef.current?.currentHomeId || '';
+    const confirms = toolCalls.map(tc => ({ ...tc, allowed: true }));
+    // 隐藏弹框，续在现有消息中继续（不创建新消息）
+    setPermissionDialog(null);
+    setConfirmPending(true);
+    // 恢复现有消息的 streaming 状态，confirm SSE 流将追加内容到该消息
+    const existingMsgId = streamingMsgIdRef.current;
+    if (existingMsgId) {
+      updateMessage(existingMsgId, m => ({ ...m, content: '正在执行操作...', streaming: true }));
+    }
+    try {
+      await confirmPermission(sessionId, userId, confirms, sseCallbacksRef.current, houseId);
+    } catch (e) {
+      console.error('[App] 权限确认请求失败:', e);
+    } finally {
+      setConfirmPending(false);
+    }
+  }, [permissionDialog]);
+
+  /** 用户点击"取消"：拒绝所有工具调用 */
+  const handlePermissionCancel = useCallback(async () => {
+    if (!permissionDialog) return;
+    const { sessionId, toolCalls } = permissionDialog;
+    const userId = sessionStatusRef.current?.loginName || '';
+    const houseId = sessionStatusRef.current?.currentHomeId || '';
+    const confirms = toolCalls.map(tc => ({ ...tc, allowed: false }));
+    // 隐藏弹框
+    setPermissionDialog(null);
+    setConfirmPending(true);
+    try {
+      await confirmPermission(sessionId, userId, confirms, sseCallbacksRef.current, houseId);
+    } catch (e) {
+      console.error('[App] 权限确认请求失败:', e);
+    } finally {
+      setConfirmPending(false);
+    }
+  }, [permissionDialog]);
 
   // ===== handleSend 的 ref（供 useVoiceAssistant 间接调用，避免闭包过期） =====
   // useVoiceAssistant 在 handleSend 之前声明，但其 onCommand 通过 ref 调用最新 handleSend
@@ -851,6 +940,37 @@ export default function App() {
         {/* 输入框区域 */}
         <div className="px-4 md:px-8 py-4">
           <div className="max-w-3xl mx-auto">
+            {/* HITL 权限确认弹框（在输入框上方，用户确认/取消工具调用） */}
+            {permissionDialog && (
+              <div className="mb-2 rounded-lg bg-amber-900/30 border border-amber-500/50 px-3 py-2.5 animate-fade-in">
+                <p className="text-amber-200 text-xs font-semibold mb-1.5">
+                  {permissionDialog.message}
+                </p>
+                {permissionDialog.toolCalls.length > 0 && (
+                  <div className="mb-2 space-y-1">
+                    {permissionDialog.toolCalls.map((tc, i) => (
+                      <div key={tc.toolCallId || i} className="flex items-center gap-1.5 text-[11px]">
+                        <span className="text-amber-400 font-mono">{tc.toolName}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <button
+                    onClick={handlePermissionConfirm}
+                    className="flex items-center gap-1 px-3 py-1 rounded-md bg-neon-green/20 border border-neon-green/40 text-neon-green text-xs font-medium hover:bg-neon-green/30 transition-all"
+                  >
+                    确认执行
+                  </button>
+                  <button
+                    onClick={handlePermissionCancel}
+                    className="flex items-center gap-1 px-3 py-1 rounded-md bg-red-500/20 border border-red-400/40 text-red-300 text-xs font-medium hover:bg-red-500/30 transition-all"
+                  >
+                    取消
+                  </button>
+                </div>
+              </div>
+            )}
             {/* 麦克风权限错误提示（not-allowed 时显示醒目红色框） */}
             {voice.errorType === 'not-allowed' && (
               <div className="mb-2 rounded-lg bg-red-900/40 border border-red-500/60 px-3 py-2">
@@ -1021,13 +1141,13 @@ export default function App() {
                       : '输入消息，Enter 发送，Shift+Enter 换行'
                   }
                   rows={1}
-                  disabled={sending}
+                  disabled={sending || confirmPending || permissionDialog !== null}
                   className="flex-1 resize-none bg-transparent text-sm text-slate-100 placeholder-slate-500 outline-none max-h-32 disabled:opacity-60"
                   style={{ minHeight: '24px' }}
                 />
                 <button
                   onClick={() => handleSend()}
-                  disabled={sending || !input.trim()}
+                  disabled={sending || confirmPending || permissionDialog !== null || !input.trim()}
                   className={`shimmer-btn rounded-xl bg-gradient-to-br from-neon-purple to-neon-purple p-2 text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0 ${
                     !sending && input.trim() ? 'shadow-neon-purple animate-glow hover:shadow-glow-md' : ''
                   }`}

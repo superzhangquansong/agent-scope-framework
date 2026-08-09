@@ -53,5 +53,5 @@ export function useSSE(callbacks: SseCallbacks) {
     };
   }, []);
 
-  return { send, abort, sending };
+  return { send, abort, sending, callbacksRef };
 }

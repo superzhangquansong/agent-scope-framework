@@ -94,6 +94,8 @@ const API_PATH = {
   AGENT_YML_SAVE: '/api/yml/save',
   // 聊天 SSE（AgentScope Framework 接口）
   CHAT_SEND: '/api/v1/chat/stream',
+  // HITL 权限确认接口
+  CHAT_CONFIRM: '/api/v1/chat/confirm',
   // 设备直连 REST 接口
   DEVICE_LIST: '/api/device/list',
   DEVICE_DETAIL: '/api/device/detail',
@@ -159,7 +161,7 @@ const API_PATH = {
   RAG_HYBRID_SEARCH: '/api/rag/hybrid-search',
 } as const;
 
-/** SSE 事件类型常量（与后端对齐：thinking / token / result / error / need_login / done / agent_step） */
+/** SSE 事件类型常量（与后端对齐：thinking / token / result / error / need_login / done / agent_step / permission_paused） */
 const SSE_EVENT = {
   THINKING: 'thinking',
   TOKEN: 'token',
@@ -170,6 +172,8 @@ const SSE_EVENT = {
   DONE: 'done',
   /** Agent 执行步骤（思考/工具调用过程，实时展示 ReAct 推理过程） */
   AGENT_STEP: 'agent_step',
+  /** HITL 权限确认暂停（需要用户在输入框上方点击确认/取消） */
+  PERMISSION_PAUSED: 'permission_paused',
 } as const;
 
 export type SseEventType = (typeof SSE_EVENT)[keyof typeof SSE_EVENT];
@@ -235,6 +239,21 @@ interface NeedSelectHomeData {
 /** done 事件数据：流程结束通知（携带耗时） */
 interface DoneData { costMs?: number; }
 
+/** permission_paused 事件数据：HITL 权限确认暂停 */
+export interface PermissionPausedData {
+  /** 提示消息 */
+  message: string;
+  /** 待确认的工具调用列表 */
+  toolCalls?: Array<{
+    /** 工具调用 ID（确认时需传回） */
+    toolCallId: string;
+    /** 工具名称 */
+    toolName: string;
+    /** 工具入参 */
+    input?: Record<string, unknown>;
+  }>;
+}
+
 /**
  * agent_step 事件数据：Agent 执行步骤（与后端 SSE agent_step 事件对齐）。
  *
@@ -283,6 +302,8 @@ export interface SseCallbacks {
   onDone?: (data: DoneData) => void;
   /** Agent 执行步骤（思考/工具调用过程，实时展示 ReAct 推理过程） */
   onAgentStep?: (data: AgentStepData) => void;
+  /** HITL 权限确认暂停（需要用户确认/取消工具调用） */
+  onPermissionPaused?: (data: PermissionPausedData) => void;
 }
 
 // ===== 通用请求封装 =====
@@ -468,9 +489,21 @@ export async function sendChat(
     throw new Error(`HTTP ${resp.status}`);
   }
 
-  const reader = resp.body.getReader();
+  await readSseStream(resp.body.getReader(), signal, callbacks);
+}
+
+/**
+ * 读取 SSE 流并分发事件（sendChat 与 confirmPermission 共用）。
+ */
+async function readSseStream(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  signal: AbortSignal | undefined,
+  callbacks: SseCallbacks,
+): Promise<void> {
   const decoder = new TextDecoder('utf-8');
   let buffer = '';
+  /** SSE 流读取超时（毫秒）：120 秒无数据则自动中止（LLM 首 token 可能需等待 compaction + 推理） */
+  const SSE_READ_TIMEOUT = 120_000;
 
   try {
     while (true) {
@@ -478,10 +511,15 @@ export async function sendChat(
         await reader.cancel();
         break;
       }
-      const { done, value } = await reader.read();
+      const readResult = await Promise.race([
+        reader.read(),
+        new Promise<{ done: boolean; value?: Uint8Array }>((_, reject) =>
+          setTimeout(() => reject(new DOMException('SSE 读取超时', 'TimeoutError')), SSE_READ_TIMEOUT),
+        ),
+      ]);
+      const { done, value } = readResult;
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
-      // SSE 消息以 \n\n 分隔
       const parts = buffer.split('\n\n');
       buffer = parts.pop() ?? '';
       for (const part of parts) {
@@ -490,17 +528,61 @@ export async function sendChat(
         dispatchSseEvent(evt, callbacks);
       }
     }
-    // 处理剩余
     if (buffer.trim()) {
       const evt = parseSseMessage(buffer);
       if (evt) dispatchSseEvent(evt, callbacks);
     }
   } catch (e: unknown) {
-    if (e instanceof DOMException && e.name === 'AbortError') {
-      return; // 正常取消，不报错
+    if (e instanceof DOMException && (e.name === 'AbortError' || e.name === 'TimeoutError')) {
+      return;
     }
     throw e;
   }
+}
+
+/**
+ * HITL 权限确认：用户确认或拒绝工具调用，恢复 Agent 执行。
+ *
+ * <p>确认接口返回 SSE 流（与 /api/v1/chat/stream 相同格式），
+ * 因此本函数不使用 postJson，而是读取 SSE 流并分发事件。</p>
+ *
+ * @param sessionId   会话 ID
+ * @param userId      用户 ID（登录名）
+ * @param confirms    确认项列表（每个工具调用一项，toolCallId + allowed）
+ * @param callbacks   SSE 事件回调
+ * @param houseId     房屋 ID（可选）
+ */
+export async function confirmPermission(
+  sessionId: string,
+  userId: string,
+  confirms: Array<{ toolCallId: string; toolName: string; allowed: boolean }>,
+  callbacks: SseCallbacks,
+  houseId?: string,
+): Promise<void> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const token = getSessionToken();
+  if (token) headers[SESSION_TOKEN_HEADER] = token;
+  headers[API_KEY_HEADER] = API_KEY_VALUE;
+
+  const body: Record<string, unknown> = {
+    sessionId,
+    userId,
+    confirms,
+    houseId: houseId ?? '',
+    userMessage: '',
+  };
+  const resp = await fetch(`${API_BASE}${API_PATH.CHAT_CONFIRM}`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  });
+
+  if (!resp.ok || !resp.body) {
+    throw new Error(`HTTP ${resp.status}`);
+  }
+
+  // 读取 SSE 流（复用与 sendChat 相同的解析逻辑）
+  await readSseStream(resp.body.getReader(), undefined, callbacks);
 }
 
 /** SSE 消息解析 */
@@ -591,6 +673,11 @@ function dispatchSseEvent(evt: { event: string; data: unknown }, callbacks: SseC
         };
         callbacks.onAgentStep?.(stepData);
       }
+      break;
+
+    // ===== permission_paused 事件（HITL 权限确认暂停） =====
+    case SSE_EVENT.PERMISSION_PAUSED:
+      callbacks.onPermissionPaused?.(evt.data as PermissionPausedData);
       break;
 
     default:

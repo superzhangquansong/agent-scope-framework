@@ -69,7 +69,10 @@ interface DeviceListPageProps {
  */
 export default function DeviceListPage({ data, onDeviceDetail }: DeviceListPageProps) {
   const payload = data as unknown as DeviceListData;
-  const initialDevices = payload.devices ?? payload.list ?? [];
+  // 兼容后端 ToolResultVO.data 直接传数组的场景（无 {devices:[...]} 包装）
+  const rawData = data as unknown;
+  const initialDevices: DeviceItem[] = payload.devices ?? payload.list
+    ?? (Array.isArray(rawData) ? rawData as DeviceItem[] : []);
   const initialTotal = payload.total ?? initialDevices.length;
 
   // 当 SSE 报文未携带 devices 时，通过 REST 接口自行拉取
