@@ -190,6 +190,8 @@ export default function App() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   /** 当前流式 AI 消息 ID（供 SSE 回调定位更新） */
   const streamingMsgIdRef = useRef<string | null>(null);
+  /** HITL 权限暂停前的消息 ID（handleSend finally 置 null 后保留，供 confirm 恢复使用） */
+  const hitlMsgIdRef = useRef<string | null>(null);
   /** 当前发送周期内收到的 result 事件数（v3.6.0 多意图支持，0=首个 result，>0=后续 result 创建新便利贴） */
   const resultCountRef = useRef(0);
   /** 登录后重发消息的定时器（卸载时清理） */
@@ -206,6 +208,8 @@ export default function App() {
   } | null>(null);
   /** 确认请求进行中（防止用户在 confirm SSE 流期间输入） */
   const [confirmPending, setConfirmPending] = useState(false);
+  /** 确认弹框动画状态 */
+  const [dialogVisible, setDialogVisible] = useState(false);
   useEffect(() => {
     sessionStatusRef.current = sessionStatus;
   }, [sessionStatus]);
@@ -262,6 +266,9 @@ export default function App() {
       const id = streamingMsgIdRef.current;
       const routePath = data?.routePath ?? null;
       const resultData = data?.data ?? {};
+      console.log('[onResult] routePath=%s, hasData=%s, msgId=%s, dataKeys=%s',
+        routePath, !!data?.data, id,
+        data?.data != null ? Object.keys(data.data as Record<string, unknown>).join(',') : 'none');
       // v4.4.13 修复：AgentScope 模式下后端将 message 设为 null（非纯文本路由），
       // 回复文本放在 resultData.reply 中。此处优先取 data.message，
       // 为空时回退到 resultData.reply，避免便利贴内容停留在"正在思考..."
@@ -440,6 +447,10 @@ export default function App() {
         message: data?.message || '操作需要您的确认',
         toolCalls,
       });
+      // 延迟触发动画（先设置数据，再让 CSS transition 生效）
+      setTimeout(() => setDialogVisible(true), 50);
+      // 保存消息 ID 到 hitlMsgIdRef（handleSend finally 会将 streamingMsgIdRef 置 null）
+      hitlMsgIdRef.current = streamingMsgIdRef.current;
       // 中断当前 SSE 流，释放 sending 状态（后端将在 confirm 接口恢复执行）
       abortSseRef.current();
       // 更新消息状态，允许用户操作确认弹框
@@ -472,13 +483,17 @@ export default function App() {
     const userId = sessionStatusRef.current?.loginName || '';
     const houseId = sessionStatusRef.current?.currentHomeId || '';
     const confirms = toolCalls.map(tc => ({ ...tc, allowed: true }));
-    // 隐藏弹框，续在现有消息中继续（不创建新消息）
-    setPermissionDialog(null);
+    // 隐藏弹框动画
+    setDialogVisible(false);
+    setTimeout(() => {
+      setPermissionDialog(null);
+    }, 200);
     setConfirmPending(true);
-    // 恢复现有消息的 streaming 状态，confirm SSE 流将追加内容到该消息
-    const existingMsgId = streamingMsgIdRef.current;
+    // 恢复 HITL 暂停前的消息 ID（handleSend finally 已将 streamingMsgIdRef 置 null）
+    const existingMsgId = hitlMsgIdRef.current;
     if (existingMsgId) {
       updateMessage(existingMsgId, m => ({ ...m, content: '正在执行操作...', streaming: true }));
+      streamingMsgIdRef.current = existingMsgId; // 恢复，供 confirm SSE 流的 onResult 使用
     }
     try {
       await confirmPermission(sessionId, userId, confirms, sseCallbacksRef.current, houseId);
@@ -496,8 +511,11 @@ export default function App() {
     const userId = sessionStatusRef.current?.loginName || '';
     const houseId = sessionStatusRef.current?.currentHomeId || '';
     const confirms = toolCalls.map(tc => ({ ...tc, allowed: false }));
-    // 隐藏弹框
-    setPermissionDialog(null);
+    // 隐藏弹框动画
+    setDialogVisible(false);
+    setTimeout(() => {
+      setPermissionDialog(null);
+    }, 200);
     setConfirmPending(true);
     try {
       await confirmPermission(sessionId, userId, confirms, sseCallbacksRef.current, houseId);
@@ -949,34 +967,71 @@ export default function App() {
         {/* 输入框区域 */}
         <div className="px-4 md:px-8 py-4">
           <div className="max-w-3xl mx-auto">
-            {/* HITL 权限确认弹框（在输入框上方，用户确认/取消工具调用） */}
+            {/* HITL 权限确认弹框（玻璃拟态风格，输入框上方） */}
             {permissionDialog && (
-              <div className="mb-2 rounded-lg bg-amber-900/30 border border-amber-500/50 px-3 py-2.5 animate-fade-in">
-                <p className="text-amber-200 text-xs font-semibold mb-1.5">
-                  {permissionDialog.message}
-                </p>
-                {permissionDialog.toolCalls.length > 0 && (
-                  <div className="mb-2 space-y-1">
+              <div
+                className="mb-3 rounded-2xl overflow-hidden transition-all duration-300"
+                style={{
+                  background: 'rgba(15, 23, 42, 0.9)',
+                  backdropFilter: 'blur(20px)',
+                  border: '1px solid rgba(0, 212, 255, 0.2)',
+                  boxShadow: '0 0 40px rgba(0, 212, 255, 0.1), 0 10px 30px rgba(0, 0, 0, 0.3)',
+                  opacity: dialogVisible ? 1 : 0,
+                  transform: `translateY(${dialogVisible ? 0 : -8}px)`,
+                }}
+              >
+                {/* 霓虹扫描线 */}
+                <div className="h-1 bg-gradient-to-r from-cyan-500 via-purple-500 to-cyan-500 opacity-70" />
+                <div className="p-3.5">
+                  <div className="flex items-center gap-2.5 mb-2.5">
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                      style={{
+                        background: 'linear-gradient(135deg, rgba(0, 212, 255, 0.2), rgba(123, 47, 190, 0.2))',
+                        border: '1px solid rgba(0, 212, 255, 0.3)',
+                      }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00d4ff" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-slate-200">操作确认</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">{permissionDialog.message}</p>
+                    </div>
+                  </div>
+                  {/* 工具列表 */}
+                  <div className="flex flex-wrap gap-1.5 mb-3">
                     {permissionDialog.toolCalls.map((tc, i) => (
-                      <div key={tc.toolCallId || i} className="flex items-center gap-1.5 text-[11px]">
-                        <span className="text-amber-400 font-mono">{tc.toolName}</span>
-                      </div>
+                      <span
+                        key={tc.toolCallId || i}
+                        className="text-[10px] px-2 py-0.5 rounded-full font-mono"
+                        style={{
+                          background: 'rgba(0, 212, 255, 0.1)',
+                          border: '1px solid rgba(0, 212, 255, 0.2)',
+                          color: '#00d4ff',
+                        }}
+                      >
+                        {tc.toolName === 'batch_control_device' ? '设备控制' :
+                         tc.toolName === 'query_device_list' ? '查询设备' :
+                         tc.toolName === 'execute_scene' ? '执行场景' :
+                         tc.toolName === 'create_scene' ? '创建场景' : tc.toolName}
+                      </span>
                     ))}
                   </div>
-                )}
-                <div className="flex gap-2">
-                  <button
-                    onClick={handlePermissionConfirm}
-                    className="flex items-center gap-1 px-3 py-1 rounded-md bg-neon-green/20 border border-neon-green/40 text-neon-green text-xs font-medium hover:bg-neon-green/30 transition-all"
-                  >
-                    确认执行
-                  </button>
-                  <button
-                    onClick={handlePermissionCancel}
-                    className="flex items-center gap-1 px-3 py-1 rounded-md bg-red-500/20 border border-red-400/40 text-red-300 text-xs font-medium hover:bg-red-500/30 transition-all"
-                  >
-                    取消
-                  </button>
+                  {/* 按钮 */}
+                  <div className="flex gap-2">
+                    <button onClick={handlePermissionConfirm} disabled={confirmPending}
+                      className="flex-1 flex items-center justify-center gap-1 py-2 rounded-xl text-xs font-semibold transition-all disabled:opacity-50"
+                      style={{ background: 'linear-gradient(135deg, rgba(0,212,255,0.2), rgba(0,180,216,0.15))', border: '1px solid rgba(0,212,255,0.35)', color: '#00d4ff' }}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                      确认
+                    </button>
+                    <button onClick={handlePermissionCancel} disabled={confirmPending}
+                      className="flex-1 flex items-center justify-center gap-1 py-2 rounded-xl text-xs font-semibold transition-all disabled:opacity-50"
+                      style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', color: '#f87171' }}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                      取消
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

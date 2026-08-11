@@ -166,6 +166,11 @@ public class SpkAttributeResolverImpl implements SpkAttributeResolver {
      * 遍历别名，若用户输入包含某别名，则匹配对应的枚举值。
      * 匹配策略：先精确匹配别名与枚举 desc，再模糊匹配（别名包含某枚举 desc）。
      *
+     * <p>兜底策略：当标准匹配失败但 userInput 是"开"或"关"时，
+     * 尝试在枚举值中查找对应的"启用/禁用"或"开/关"映射。
+     * 这解决了传感器等设备的 enable 属性（aliases=["使能","启用","禁用"]）
+     * 无法匹配"开/关"关键词的问题。</p>
+     *
      * @param attr      属性定义
      * @param userInput 用户输入
      * @return 枚举值字符串，未匹配返回 null
@@ -210,6 +215,37 @@ public class SpkAttributeResolverImpl implements SpkAttributeResolver {
                 }
             }
         }
+
+        // 兜底：userInput 是"开"或"关"，在枚举值和 desc 中查找映射
+        if ("开".equals(userInput.trim())) {
+            for (String desc : descToValue.keySet()) {
+                if ("开".equals(desc) || "启用".equals(desc) || "on".equalsIgnoreCase(desc)
+                        || "true".equalsIgnoreCase(desc)) {
+                    return descToValue.get(desc);
+                }
+            }
+            // 都找不到时返回第一个枚举值（大多数设备的第一个枚举是"开/启用"）
+            if (!descToValue.isEmpty()) {
+                return descToValue.values().iterator().next();
+            }
+        }
+        if ("关".equals(userInput.trim())) {
+            for (String desc : descToValue.keySet()) {
+                if ("关".equals(desc) || "禁用".equals(desc) || "off".equalsIgnoreCase(desc)
+                        || "false".equalsIgnoreCase(desc)) {
+                    return descToValue.get(desc);
+                }
+            }
+            // 都找不到时返回最后一个枚举值（大多数设备的最后一个枚举是"关/禁用"）
+            if (!descToValue.isEmpty()) {
+                String lastValue = null;
+                for (String v : descToValue.values()) {
+                    lastValue = v;
+                }
+                return lastValue;
+            }
+        }
+
         return null;
     }
 

@@ -62,13 +62,16 @@ public class HarnessAgentConfig {
             2. 用户意图由你自主理解，不需要用户使用固定格式表达
             3. 多意图指令需拆分并行处理（如"开灯并查设备"→ 调用多个工具）
             4. 工具调用失败时向用户说明原因，不编造成功结果
+            5. 全开/全关场景：用户说"全开""全关""打开所有设备""关闭所有设备"时，必须先调用 query_device_list 获取所有设备，再为每个设备创建 action（userInput 填"开"或"关"），通过 batch_control_device 一次性批量提交
 
             【可用工具清单】
-            - query_device_list: 查询当前房屋所有设备列表
-            - query_device_detail: 查询设备状态详情（需设备ID）
-            - batch_control_device: 批量控制设备（需构造actions）
+            - query_device_list: 查询当前房屋所有设备列表（返回deviceId/gatewayId/spk/设备名）
+            - query_device_detail: 查询设备状态详情（需设备ID列表，逗号分隔）
+            - batch_control_device: 批量控制设备。参数 actionsJson 为 JSON 数组，每个元素含 deviceId/gatewayId/spk/userInput。全开/全关场景需先调 query_device_list 获取全部设备
             - search_product: 搜索产品列表
             - query_home_list: 查询房屋列表
+            - create_scene: 创建智能场景
+            - execute_scene: 执行已有场景
 
             【增强能力】
             - 工作区文件操作：可在独立工作目录中读写文件、保存中间结果

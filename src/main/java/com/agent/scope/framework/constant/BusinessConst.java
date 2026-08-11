@@ -1,6 +1,7 @@
 package com.agent.scope.framework.constant;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 业务常量接口。
@@ -63,7 +64,7 @@ public interface BusinessConst {
     /** SSE 事件类型：权限暂停（HITL 等待用户确认） */
     String SSE_EVENT_PERMISSION_PAUSED = "permission_paused";
     /** SSE 权限暂停提示消息 */
-    String MSG_PERMISSION_PAUSED = "Agent 等待权限确认，请回复\"继续\"确认或\"取消\"拒绝";
+    String MSG_PERMISSION_PAUSED = "操作需要您的确认，请点击下方按钮选择确认或取消";
     /** SSE 残留 ASKING 状态提示消息 */
     String MSG_ASKING_RESIDUAL = "检测到未完成的权限确认，请回复\"继续\"确认或\"取消\"拒绝";
     /** SSE 残留 ASKING 状态无数据提示消息 */
@@ -72,6 +73,19 @@ public interface BusinessConst {
     String MSG_AGENT_RESUME_ERROR = "Agent恢复执行异常";
     /** SSE Agent 执行异常消息 */
     String MSG_AGENT_EXECUTION_ERROR = "Agent执行异常";
+
+    /** 工具名 → 中文名映射 */
+    Map<String, String> TOOL_NAME_CN = Map.ofEntries(
+            Map.entry("query_device_list", "查询设备列表"),
+            Map.entry("query_device_detail", "查询设备详情"),
+            Map.entry("batch_control_device", "设备控制"),
+            Map.entry("search_product", "搜索产品"),
+            Map.entry("query_home_list", "查询房屋列表"),
+            Map.entry("create_scene", "创建场景"),
+            Map.entry("execute_scene", "执行场景"),
+            Map.entry("load_skill_through_path", "加载技能文档"),
+            Map.entry("http_request", "HTTP 请求")
+    );
 
     // ==================== 错误码常量 ====================
 

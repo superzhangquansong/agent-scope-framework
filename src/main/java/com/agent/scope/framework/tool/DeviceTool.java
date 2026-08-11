@@ -115,7 +115,7 @@ public class DeviceTool extends AbstractTool {
     @Tool(name = "batch_control_device",
             description = "批量控制多个 HDL 设备（多设备合并一次请求）。"
                     + "使用场景：当用户指令包含一个或多个设备控制时使用此工具，如'RGB开蓝色亮度77调光开冷色亮度99'、'打开客厅灯'。"
-                    + "全关/全开场景：用户说'全关'、'全开'时，必须先调用 query_device_list 获取所有设备，"
+                    + "全关/全开场景：用户说'全关'、'全开'、'关闭所有设备'、'打开所有设备'时，必须先调用 query_device_list 获取所有设备，"
                     + "然后为每个设备创建一个 action，userInput 填'关'（全关）或'开'（全开），一次性提交。"
                     + "参数来源要求：actionsJson 中每个元素的 deviceId/gatewayId/spk 必须来自 query_device_list 返回结果。"
                     + "设备名称优先匹配：用户输入中的设备关键词应优先匹配设备列表中名称包含该关键词的设备。"
@@ -163,9 +163,10 @@ public class DeviceTool extends AbstractTool {
             // 确定性属性解析：spk + userInput → Map<String, Object>
             Map<String, Object> attrMap = spkAttributeResolver.resolveAttributes(spk, userInput);
             if (attrMap == null || attrMap.isEmpty()) {
-                return ToolResultVO.failure(400,
-                        "第 " + (i + 1) + " 个 action 属性解析为空，spk=" + spk
-                                + "，userInput=" + userInput + "，请确认 spk 和描述正确");
+                // 无法解析属性的设备（如传感器）跳过，不中断整个批量操作
+                log.warn("[DeviceTool] 第 {} 个 action 属性解析为空，跳过: deviceId={}, spk={}, userInput={}",
+                        i + 1, deviceId, spk, userInput);
+                continue;
             }
 
             // RGB 与 colorful 互斥逻辑

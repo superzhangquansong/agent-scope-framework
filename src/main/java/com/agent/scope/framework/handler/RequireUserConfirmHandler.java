@@ -69,13 +69,20 @@ public class RequireUserConfirmHandler implements AgentEventHandler<RequireUserC
         // 同时发送 permission_paused 事件（前端监听此事件，展示确认弹框）
         SseEmitter emitter = ctx.getEmitter();
         try {
+            // 构建中文工具名列表，用户能看懂要确认什么操作
+            List<String> cnToolNames = toolCallInfos.stream()
+                    .map(tc -> TOOL_NAME_CN.getOrDefault(tc.getToolName(), tc.getToolName()))
+                    .distinct()
+                    .toList();
+            String cnTools = String.join("、", cnToolNames);
+            String message = "即将执行 " + cnTools + " 操作，请确认";
             emitter.send(SseEmitter.event()
                     .name(SSE_EVENT_PERMISSION_PAUSED)
                     .data(ctx.toJson(Map.of(
-                            "message", MSG_PERMISSION_PAUSED,
+                            "message", message,
                             "toolCalls", toolCallInfos))));
-            log.info("[Handler] 已发送 permission_paused 事件: sessionId={}, toolCount={}",
-                    sessionId, toolCallInfos.size());
+            log.info("[Handler] 已发送 permission_paused 事件: sessionId={}, toolCount={}, tools={}",
+                    sessionId, toolCallInfos.size(), cnTools);
         } catch (IOException e) {
             log.warn("[Handler] 发送 permission_paused 失败: {}", e.getMessage());
         }

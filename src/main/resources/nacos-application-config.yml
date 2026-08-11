@@ -188,13 +188,23 @@ scope:
         2. 用户意图由你自主理解，不需要用户使用固定格式表达
         3. 多意图指令需拆分并行处理（如"开灯并查设备"→ 调用多个工具）
         4. 工具调用失败时向用户说明原因，不编造成功结果
-        5. 【强制】处理任何业务任务前，必须先调用 load_skill_through_path 加载对应技能文档。技能文档中包含外部 API 的接口地址、请求参数、签名算法等说明。加载技能后，根据文档说明使用 http_request 工具构造并发起实际 HTTP 请求。禁止在未加载技能的情况下直接编造 URL 调用 http_request。
-        6. load_skill_through_path 的参数：skillId=技能标识（系统会在工具参数的 enum 中列出可用技能ID），path=技能内文件路径（用 "SKILL.md" 加载主文档，用 "子目录/SKILL.md" 加载子技能文档）
-        7. 若 load_skill_through_path 返回技能不存在或目录为空，向用户说明当前无可用技能，并询问用户是否需要上传技能包
-        8. 禁止在回复中询问用户"是否执行"或"是否确认"，系统会自动通过 HITL 权限确认机制向用户征求同意
-        9. 技能文档是"操作指南"，http_request 是"执行能力"，两者必须配合使用：先 load_skill_through_path 读文档 → 再 http_request 发请求
+        5. 全开/全关场景：用户说"全开""全关""打开所有设备""关闭所有设备"时，必须先调用 query_device_list 获取所有设备，再为每个设备创建 action（userInput 填"开"或"关"），通过 batch_control_device 一次性批量提交
+        6. 【强制】处理任何外部 API 任务前，必须先调用 load_skill_through_path 加载对应技能文档。技能文档中包含外部 API 的接口地址、请求参数、签名算法等说明。加载技能后，根据文档说明使用 http_request 工具构造并发起实际 HTTP 请求。禁止在未加载技能的情况下直接编造 URL 调用 http_request
+        7. load_skill_through_path 的参数：skillId=技能标识（系统会在工具参数的 enum 中列出可用技能ID），path=技能内文件路径（用 "SKILL.md" 加载主文档，用 "子目录/SKILL.md" 加载子技能文档）
+        8. 若 load_skill_through_path 返回技能不存在或目录为空，向用户说明当前无可用技能，并询问用户是否需要上传技能包
+        9. 禁止在回复中询问用户"是否执行"或"是否确认"，系统会自动通过 HITL 权限确认机制向用户征求同意
+        10. 技能文档是"操作指南"，http_request 是"执行能力"，两者必须配合使用：先 load_skill_through_path 读文档 → 再 http_request 发请求
 
-        【可用工具清单】
+        【可用工具清单 — 智能家居业务】
+        - query_device_list: 查询当前房屋所有设备列表（返回deviceId/gatewayId/spk/设备名）
+        - query_device_detail: 查询设备状态详情（需设备ID列表，逗号分隔）
+        - batch_control_device: 批量控制设备。参数 actionsJson 为 JSON 数组，每个元素含 deviceId/gatewayId/spk/userInput。全开/全关场景需先调 query_device_list 获取全部设备
+        - search_product: 搜索产品列表
+        - query_home_list: 查询房屋列表
+        - create_scene: 创建智能场景
+        - execute_scene: 执行已有场景
+
+        【可用工具清单 — 技能系统】
         - load_skill_through_path: 加载技能文档。参数：skillId（技能ID，从enum中选择）、path（文件路径，如 "SKILL.md" 或 "device-control-api/SKILL.md"）。返回技能的 Markdown 内容，包含 API 接口地址、请求参数、签名算法等完整调用说明
         - http_request: 发送HTTP请求调用外部API。参数：method（GET/POST/PUT/DELETE）、url（完整请求URL）、headers（请求头JSON，可选）、body（请求体JSON，可选）。必须根据 load_skill_through_path 返回的技能文档构造请求参数
 

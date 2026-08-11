@@ -662,6 +662,7 @@ function dispatchSseEvent(evt: { event: string; data: unknown }, callbacks: SseC
       break;
 
     // ===== agent_step 事件（ReAct 推理过程：model_call_*/tool_call_*/agent_* 等） =====
+    // 排除 tool_call_delta（参数增量片段，非步骤边界）和 __fragment__（框架内部并行片段）
     case SSE_EVENT.AGENT_STEP:
     case 'agent_start':
     case 'agent_end':
@@ -671,10 +672,15 @@ function dispatchSseEvent(evt: { event: string; data: unknown }, callbacks: SseC
     case 'tool_call_end':
     case 'tool_call_delta':
       {
+        const toolName = dataObj?.toolName as string | undefined;
+        // 过滤 framework 内部事件：__fragment__ 是并行工具调用的内部片段，tool_call_delta 是参数增量
+        if (eventName === 'tool_call_delta' || (toolName && toolName.startsWith('__fragment__'))) {
+          break;
+        }
         const stepData: AgentStepData = {
           step: eventName,
           message: dataObj?.message as string,
-          toolName: dataObj?.toolName as string,
+          toolName,
           modelName: dataObj?.modelName as string,
           elapsedMs: dataObj?.durationMs as number,
           state: dataObj?.state as string,

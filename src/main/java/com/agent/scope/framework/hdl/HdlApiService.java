@@ -408,10 +408,27 @@ public class HdlApiService implements HdlApiPort {
                         sessionContext.getAccessToken());
                 if (detailResp.success()) {
                     List<Map<String, Object>> detailList = extractListFromResponse(detailResp);
-                    if (detailList != null) {
+                    if (detailList != null && !detailList.isEmpty()) {
                         devices = detailList;
+                    } else {
+                        log.warn("[HdlApiService] 设备详情查询返回空列表: deviceIds={}", deviceIdsForDetail);
                     }
+                } else {
+                    log.warn("[HdlApiService] 设备详情查询失败: code={}, msg={}, deviceIds={}",
+                            detailResp.getCode(), detailResp.getMsg(), deviceIdsForDetail);
                 }
+            }
+            // 兜底：如果查询失败，从 actions 构造最小设备信息供前端展示
+            if (devices.isEmpty()) {
+                for (Map<String, Object> action : actions) {
+                    Map<String, Object> dev = new LinkedHashMap<>();
+                    dev.put("deviceId", action.get("deviceId"));
+                    dev.put("spk", action.get("spk"));
+                    dev.put("deviceName", "设备(" + action.get("deviceId") + ")");
+                    dev.put("controlResult", "success");
+                    devices.add(dev);
+                }
+                log.info("[HdlApiService] 使用 action 数据构造设备信息: count={}", devices.size());
             }
 
             // 包装为前端 DeviceStatusPage 期望的格式：{devices: [...], multiDevice: boolean}
