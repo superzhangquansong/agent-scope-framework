@@ -115,9 +115,9 @@ public class DeviceTool extends AbstractTool {
     @Tool(name = "batch_control_device",
             description = "批量控制多个 HDL 设备（多设备合并一次请求）。"
                     + "使用场景：当用户指令包含一个或多个设备控制时使用此工具，如'RGB开蓝色亮度77调光开冷色亮度99'、'打开客厅灯'。"
-                    + "全关/全开场景：用户说'全关'、'全开'、'关闭所有设备'、'打开所有设备'时，必须先调用 query_device_list 获取所有设备，"
-                    + "然后为每个设备创建一个 action，userInput 填'关'（全关）或'开'（全开），一次性提交。"
-                    + "参数来源要求：actionsJson 中每个元素的 deviceId/gatewayId/spk 必须来自 query_device_list 返回结果。"
+                    + "全关/全开场景：用户说'全关'、'全开'、'关闭所有设备'、'打开所有设备'时，直接传 mode='all_off' 或 mode='all_on'，"
+                    + "无需传 actionsJson，工具内部自动查询所有设备并控制。禁止逐个枚举设备！"
+                    + "参数来源要求：actionsJson 中每个元素的 deviceId/gatewayId/spk/deviceName 必须来自 query_device_list 返回结果。"
                     + "设备名称优先匹配：用户输入中的设备关键词应优先匹配设备列表中名称包含该关键词的设备。"
                     + "多设备合并：用户输入可能没有逗号分隔符（如'调光开冷色亮度48RGB开红色亮度88'），"
                     + "这是多个设备控制指令连写，必须识别为多设备控制合并为一次 batch_control_device 调用，禁止拆分成多次调用。"
@@ -125,18 +125,25 @@ public class DeviceTool extends AbstractTool {
             readOnly = true,
             concurrencySafe = false)
     public ToolResultVO batchControlDevice(
-            @ToolParam(name = "actionsJson", required = true,
-                    description = "设备动作JSON数组字符串，格式：[{\"deviceId\":\"<query_device_list返回的deviceId>\",\"gatewayId\":\"<query_device_list返回的gatewayId>\",\"spk\":\"<query_device_list返回的spk>\",\"userInput\":\"用户对该设备的控制描述\"}]。deviceId/gatewayId/spk必须来自query_device_list返回结果，禁止编造或使用任何示例值") String actionsJson,
+            @ToolParam(name = "actionsJson", required = false,
+                    description = "设备动作JSON数组字符串，格式：[{\"deviceId\":\"<query_device_list返回的deviceId>\",\"gatewayId\":\"<query_device_list返回的gatewayId>\",\"spk\":\"<query_device_list返回的spk>\",\"userInput\":\"用户对该设备的控制描述\",\"deviceName\":\"<query_device_list返回的设备名称>\"}]。全关/全开时留空，传mode参数。deviceId/gatewayId/spk/deviceName必须来自query_device_list返回结果") String actionsJson,
+            @ToolParam(name = "mode", required = false,
+                    description = "全关/全开模式。'all_off'=全关所有设备，'all_on'=全开所有设备。设置后无需传actionsJson，工具内部自动查询并控制所有设备") String mode,
             RuntimeContext runtimeContext) {
 
         SessionContext sessionContext = resolveSessionContext(runtimeContext);
-        log.info("[DeviceTool] 批量控制设备: actionsJson={}, userId={}",
-                actionsJson, sessionContext.getUserId());
+        log.info("[DeviceTool] 批量控制设备: actionsJson={}, mode={}, userId={}",
+                actionsJson, mode, sessionContext.getUserId());
+
+        // 全关/全开模式：工具内部查询所有设备并控制，避免 LLM 逐个枚举设备导致 token 生成耗时巨大
+        if (mode != null && !mode.isBlank()) {
+            return batchControlAllDevices(mode, sessionContext);
+        }
 
         // 1. 解析 actionsJson
         JSONArray actions = JSON.parseArray(actionsJson);
         if (actions == null || actions.isEmpty()) {
-            return ToolResultVO.failure(400, "actionsJson 解析失败或为空");
+            return ToolResultVO.failure(400, "actionsJson 解析失败或为空，全关/全开请传 mode 参数");
         }
 
         // 2. 对每个 action 做属性解析
@@ -150,6 +157,7 @@ public class DeviceTool extends AbstractTool {
             String actionGatewayId = action.getString("gatewayId");
             String spk = action.getString("spk");
             String userInput = action.getString("userInput");
+            String deviceName = action.getString("deviceName");
 
             if (deviceId == null || deviceId.isBlank()) {
                 return ToolResultVO.failure(400, "第 " + (i + 1) + " 个 action 缺少 deviceId");
@@ -182,11 +190,14 @@ public class DeviceTool extends AbstractTool {
                 attributes.add(attr);
             }
 
-            // 构建解析后的 action
-            Map<String, Object> resolvedAction = new LinkedHashMap<>(3);
+            // 构建解析后的 action（含 deviceName 供前端回显）
+            Map<String, Object> resolvedAction = new LinkedHashMap<>(4);
             resolvedAction.put("deviceId", deviceId);
             resolvedAction.put("spk", spk);
             resolvedAction.put("attributes", attributes);
+            if (deviceName != null && !deviceName.isBlank()) {
+                resolvedAction.put("deviceName", deviceName);
+            }
             resolvedActions.add(resolvedAction);
 
             // 提取 gatewayId（同一网关下的设备才能批量控制）
@@ -200,11 +211,77 @@ public class DeviceTool extends AbstractTool {
             }
             deviceIdsForDetail.append(deviceId);
 
-            log.info("[DeviceTool] 设备属性解析: deviceId={}, spk={}, userInput={}, attrs={}",
-                    deviceId, spk, userInput, attrMap);
+            log.info("[DeviceTool] 设备属性解析: deviceId={}, spk={}, deviceName={}, userInput={}, attrs={}",
+                    deviceId, spk, deviceName, userInput, attrMap);
         }
 
         // 3. 调用 HDL API 批量控制
+        return hdlApiPort.batchControlDevice(resolvedActions, gatewayId,
+                deviceIdsForDetail.toString(), sessionContext);
+    }
+
+    /**
+     * 全关/全开模式：工具内部查询所有设备并批量控制。
+     *
+     * <p>LLM 传 mode='all_off' 或 'all_on' 即可，无需逐个枚举设备，
+     * 避免 token 生成耗时巨大（20 个设备需要生成大量 JSON）。</p>
+     *
+     * @param mode           'all_off' 或 'all_on'
+     * @param sessionContext 会话上下文
+     * @return 工具结果 VO
+     */
+    private ToolResultVO batchControlAllDevices(String mode, SessionContext sessionContext) {
+        log.info("[DeviceTool] 全关/全开模式: mode={}, userId={}", mode, sessionContext.getUserId());
+
+        // 查询所有设备
+        List<Map<String, Object>> allDevices = hdlApiPort.queryDeviceListRaw(sessionContext);
+        if (allDevices.isEmpty()) {
+            return ToolResultVO.failure(400, "未查询到任何设备，无法执行全关/全开操作");
+        }
+
+        String userInput = "all_off".equals(mode) ? "关" : "开";
+        List<Map<String, Object>> resolvedActions = new ArrayList<>(allDevices.size());
+        String gatewayId = null;
+        StringBuilder deviceIdsForDetail = new StringBuilder();
+
+        for (Map<String, Object> device : allDevices) {
+            String deviceId = String.valueOf(device.get("deviceId"));
+            String spk = String.valueOf(device.get("spk"));
+            String deviceName = String.valueOf(device.getOrDefault("name", deviceId));
+            String gwId = String.valueOf(device.get("gatewayId"));
+
+            if (deviceId == null || deviceId.isBlank() || "null".equals(deviceId)) continue;
+            if (spk == null || spk.isBlank() || "null".equals(spk)) continue;
+
+            // 属性解析
+            Map<String, Object> attrMap = spkAttributeResolver.resolveAttributes(spk, userInput);
+            if (attrMap == null || attrMap.isEmpty()) {
+                log.warn("[DeviceTool] 全关/全开属性解析为空，跳过: deviceId={}, spk={}", deviceId, spk);
+                continue;
+            }
+
+            // 构建 attributes
+            List<Map<String, Object>> attributes = new ArrayList<>(attrMap.size());
+            for (Map.Entry<String, Object> entry : attrMap.entrySet()) {
+                Map<String, Object> attr = new LinkedHashMap<>(2);
+                attr.put("key", entry.getKey());
+                attr.put("value", entry.getValue());
+                attributes.add(attr);
+            }
+
+            Map<String, Object> resolvedAction = new LinkedHashMap<>(4);
+            resolvedAction.put("deviceId", deviceId);
+            resolvedAction.put("spk", spk);
+            resolvedAction.put("attributes", attributes);
+            resolvedAction.put("deviceName", deviceName);
+            resolvedActions.add(resolvedAction);
+
+            if (gatewayId == null) gatewayId = gwId;
+            if (deviceIdsForDetail.length() > 0) deviceIdsForDetail.append(",");
+            deviceIdsForDetail.append(deviceId);
+        }
+
+        log.info("[DeviceTool] 全关/全开构建完成: mode={}, deviceCount={}", mode, resolvedActions.size());
         return hdlApiPort.batchControlDevice(resolvedActions, gatewayId,
                 deviceIdsForDetail.toString(), sessionContext);
     }

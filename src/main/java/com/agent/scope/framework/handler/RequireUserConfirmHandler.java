@@ -19,6 +19,8 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static com.agent.scope.framework.constant.BusinessConst.*;
 
@@ -40,6 +42,14 @@ public class RequireUserConfirmHandler implements AgentEventHandler<RequireUserC
     private final PendingConfirmationService pendingConfirmationService;
     private final AgentScopeProperties properties;
     private final SessionManager sessionManager;
+
+    /**
+     * 自动确认中的会话集合（防递归）。
+     * <p>confirmAndResume 创建新订阅后，框架执行已确认工具时会再次触发权限检查，
+     * 导致 RequireUserConfirmEvent 递归触发。通过此集合标记正在自动确认的会话，
+     * 第二次事件直接跳过，避免无限递归导致 Agent 异常终止。</p>
+     */
+    private final Set<String> autoConfirmingSessions = ConcurrentHashMap.newKeySet();
 
     /**
      * ChatService，使用 @Lazy 避免循环依赖：
@@ -68,31 +78,43 @@ public class RequireUserConfirmHandler implements AgentEventHandler<RequireUserC
 
         // 权限已禁用：自动批准所有工具调用，跳过前端确认流程
         if (properties.getPermission() != null && !properties.getPermission().isEnabled()) {
-            log.info("[Handler] 权限已禁用，自动批准: sessionId={}, tools={}",
-                    sessionId,
-                    ruc.getToolCalls().stream().map(tcb -> tcb.getName()).toList());
-
-            pendingConfirmationService.cachePendingConfirmations(
-                    sessionId, ruc.getToolCalls(), ctx.getRecorder().toolCallArguments);
-
-            // 标记 autoConfirmed，防止 streamEvents 的 doOnComplete 关闭 emitter
-            ctx.getRecorder().autoConfirmed = true;
-
-            // 构建自动批准 DTO，从当前会话补全凭证
-            PermissionConfirmDTO dto = new PermissionConfirmDTO();
-            dto.setSessionId(sessionId);
-            dto.setUserId(ctx.getUserId());
-
-            UserSession session = sessionManager.findByLoginName(ctx.getUserId());
-            if (session != null) {
-                dto.setAccessToken(session.getHdlAccessToken());
-                dto.setHouseId(session.getCurrentHomeId());
-            } else {
-                log.warn("[Handler] 自动批准未找到会话: userId={}", ctx.getUserId());
+            // 防递归：confirmAndResume 创建的新订阅中，框架执行已确认工具时会再次触发
+            // RequireUserConfirmEvent，此时该会话已在自动确认中，直接跳过避免无限递归
+            if (!autoConfirmingSessions.add(sessionId)) {
+                log.info("[Handler] 会话已在自动确认流程中，跳过递归事件: sessionId={}, tools={}",
+                        sessionId,
+                        ruc.getToolCalls().stream().map(tcb -> tcb.getName()).toList());
+                return;
             }
+            try {
+                log.info("[Handler] 权限已禁用，自动批准: sessionId={}, tools={}",
+                        sessionId,
+                        ruc.getToolCalls().stream().map(tcb -> tcb.getName()).toList());
 
-            // 直接恢复 Agent 执行，不发送 permission_paused 到前端
-            chatService.confirmAndResume(dto, ctx.getEmitter());
+                pendingConfirmationService.cachePendingConfirmations(
+                        sessionId, ruc.getToolCalls(), ctx.getRecorder().toolCallArguments);
+
+                // 标记 autoConfirmed，防止 streamEvents 的 doOnComplete 关闭 emitter
+                ctx.getRecorder().autoConfirmed = true;
+
+                // 构建自动批准 DTO，从当前会话补全凭证
+                PermissionConfirmDTO dto = new PermissionConfirmDTO();
+                dto.setSessionId(sessionId);
+                dto.setUserId(ctx.getUserId());
+
+                UserSession session = sessionManager.findByLoginName(ctx.getUserId());
+                if (session != null) {
+                    dto.setAccessToken(session.getHdlAccessToken());
+                    dto.setHouseId(session.getCurrentHomeId());
+                } else {
+                    log.warn("[Handler] 自动批准未找到会话: userId={}", ctx.getUserId());
+                }
+
+                // 直接恢复 Agent 执行，不发送 permission_paused 到前端
+                chatService.confirmAndResume(dto, ctx.getEmitter());
+            } finally {
+                autoConfirmingSessions.remove(sessionId);
+            }
             return;
         }
 

@@ -316,6 +316,8 @@ public class ChatService {
         String houseId = dto.getHouseId();
         String accessToken = dto.getAccessToken();
 
+        final long tStart = System.currentTimeMillis();
+
         // 特性43：Redis 分布式限流检查（用户会话维度），防止刷接口
         if (!redisRateLimiterService.tryAcquireUserSession(userId, sessionId)) {
             log.warn("[Chat] 权限确认请求被限流: userId={}, sessionId={}", userId, sessionId);
@@ -398,8 +400,9 @@ public class ChatService {
             }
             Msg resumeMsg = resumeBuilder.build();
 
-            log.info("[Chat] 发送权限确认恢复消息: sessionId={}, confirmCount={}",
-                    sessionId, confirmResults.size());
+            final long tBeforeSubscribe = System.currentTimeMillis();
+            log.info("[Chat] [计时] confirmAndResume 准备阶段: sessionId={}, 构建耗时={}ms, confirmCount={}",
+                    sessionId, tBeforeSubscribe - tStart, confirmResults.size());
 
             sendEvent(emitter, SSE_EVENT_AGENT_START, sessionId, Map.of());
 
@@ -457,9 +460,14 @@ public class ChatService {
                             return;
                         }
 
-                        // 自动批准模式：emitter 由 confirmAndResume 接管，不在此处关闭
-                        if (recorder.autoConfirmed) {
-                            log.info("[Chat] 自动批准模式，emitter 生命周期移交 confirmAndResume: sessionId={}", sessionId);
+                        // 自动批准模式：emitter 生命周期移交后续事件，不在此处关闭
+                        // recorder.autoConfirmed 来自第一层订阅，confirmAndResume 内部的新 recorder 默认为 false，
+                        // 因此额外检查权限配置确保自动批准时 emitter 保持打开
+                        boolean isAutoConfirm = recorder.autoConfirmed
+                                || (agentScopeProperties.getPermission() != null
+                                    && !agentScopeProperties.getPermission().isEnabled());
+                        if (isAutoConfirm) {
+                            log.info("[Chat] 自动批准模式，跳过 emitter 关闭: sessionId={}", sessionId);
                             return;
                         }
 

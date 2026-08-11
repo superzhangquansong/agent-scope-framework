@@ -400,7 +400,7 @@ public class HdlApiService implements HdlApiPort {
                 return ToolResultVO.failure(CODE_OPERATION_FAILED, "设备控制失败: " + resp.getMsg());
             }
 
-            // 控制成功后查询设备详情，返回最新状态供前端回显
+            // 控制成功后查询设备详情，获取真实设备名称、在线状态等供前端渲染
             List<Map<String, Object>> devices = new ArrayList<>();
             if (deviceIdsForDetail != null && !deviceIdsForDetail.isEmpty()) {
                 Map<String, Object> detailData = new LinkedHashMap<>();
@@ -411,6 +411,19 @@ public class HdlApiService implements HdlApiPort {
                 if (detailResp.success()) {
                     List<Map<String, Object>> detailList = extractListFromResponse(detailResp);
                     if (detailList != null && !detailList.isEmpty()) {
+                        // 将 controlAttributes 注入到详情数据中，供前端 3D 户型图渲染动效
+                        Map<String, Map<String, Object>> actionAttrs = new LinkedHashMap<>();
+                        for (Map<String, Object> action : actions) {
+                            String actionDeviceId = String.valueOf(action.get("deviceId"));
+                            actionAttrs.put(actionDeviceId, action);
+                        }
+                        for (Map<String, Object> dev : detailList) {
+                            String devId = String.valueOf(dev.get("deviceId"));
+                            Map<String, Object> action = actionAttrs.get(devId);
+                            if (action != null && action.get("attributes") != null) {
+                                dev.put("controlAttributes", action.get("attributes"));
+                            }
+                        }
                         devices = detailList;
                     } else {
                         log.warn("[HdlApiService] 设备详情查询返回空列表: deviceIds={}", deviceIdsForDetail);
@@ -420,14 +433,17 @@ public class HdlApiService implements HdlApiPort {
                             detailResp.getCode(), detailResp.getMsg(), deviceIdsForDetail);
                 }
             }
-            // 兜底：如果查询失败，从 actions 构造最小设备信息供前端展示
+            // 兜底：详情查询失败时从 actions 构造最小设备信息供前端展示
             if (devices.isEmpty()) {
                 for (Map<String, Object> action : actions) {
                     Map<String, Object> dev = new LinkedHashMap<>();
                     dev.put("deviceId", action.get("deviceId"));
                     dev.put("spk", action.get("spk"));
-                    dev.put("deviceName", "设备(" + action.get("deviceId") + ")");
+                    String displayName = (String) action.get("deviceName");
+                    dev.put("deviceName", (displayName != null && !displayName.isBlank())
+                            ? displayName : "设备(" + action.get("spk") + ")");
                     dev.put("controlResult", "success");
+                    dev.put("controlAttributes", action.get("attributes"));
                     devices.add(dev);
                 }
                 log.info("[HdlApiService] 使用 action 数据构造设备信息: count={}", devices.size());
@@ -526,6 +542,12 @@ public class HdlApiService implements HdlApiPort {
             // body 中未指定 homeId 时，自动填充当前会话房屋 ID
             if (!body.containsKey("homeId")) {
                 body.put("homeId", sessionContext.getHouseId());
+            }
+
+            // HDL scene/add API 期望字段名为 sceneList 而非 functions
+            // 将 functions 重命名为 sceneList，避免 "场景列表不能为空" 错误
+            if (body.containsKey("functions")) {
+                body.put("sceneList", body.remove("functions"));
             }
 
             HdlResponse resp = hdlApiClient.post(HdlApiConstants.SCENE_ADD, body, true,
