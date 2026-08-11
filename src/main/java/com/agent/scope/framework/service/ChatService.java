@@ -457,6 +457,12 @@ public class ChatService {
                             return;
                         }
 
+                        // 自动批准模式：emitter 由 confirmAndResume 接管，不在此处关闭
+                        if (recorder.autoConfirmed) {
+                            log.info("[Chat] 自动批准模式，emitter 生命周期移交 confirmAndResume: sessionId={}", sessionId);
+                            return;
+                        }
+
                         // 权限暂停场景：RequireUserConfirmHandler 已在事件链中发送 permission_paused，
                         // 此处仅关闭 emitter，不再重复发送
                         if (recorder.permissionPaused) {
@@ -611,6 +617,12 @@ public class ChatService {
                         if (wasInterrupted) {
                             log.info("[Chat] 框架优雅中断完成，AgentState 已保存: sessionId={}, 耗时={}ms",
                                     sessionId, totalDurationMs);
+                            return;
+                        }
+
+                        // 自动批准模式：emitter 生命周期移交 confirmAndResume，不在此处关闭
+                        if (recorder.autoConfirmed) {
+                            log.info("[Chat] 自动批准模式，跳过 emitter 关闭: sessionId={}", sessionId);
                             return;
                         }
 
@@ -1126,6 +1138,9 @@ public class ChatService {
          * <p>使用 volatile 保证跨线程可见性（事件发射与 doOnComplete 可能在不同线程）。</p>
          */
         public volatile boolean permissionPaused = false;
+
+        /** 自动批准模式：permission.enabled=false 时，doOnComplete 不关闭 emitter */
+        public volatile boolean autoConfirmed = false;
 
         /**
          * 用户是否拒绝了全部工具调用（HITL 确认）。

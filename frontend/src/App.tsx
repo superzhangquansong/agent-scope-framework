@@ -1225,7 +1225,7 @@ export default function App() {
                       : '输入消息，Enter 发送，Shift+Enter 换行'
                   }
                   rows={1}
-                  disabled={sending && !resultReceivedRef.current || confirmPending || permissionDialog !== null}
+                  disabled={(sending || confirmPending) && !resultReceivedRef.current || permissionDialog !== null}
                   className="flex-1 resize-none bg-transparent text-sm text-slate-100 placeholder-slate-500 outline-none max-h-32 disabled:opacity-60"
                   style={{ minHeight: '24px' }}
                 />
@@ -1241,7 +1241,7 @@ export default function App() {
                 ) : (
                   <button
                     onClick={() => handleSend()}
-                    disabled={confirmPending || permissionDialog !== null || !input.trim()}
+                    disabled={confirmPending && !resultReceivedRef.current || permissionDialog !== null || !input.trim()}
                     className={`shimmer-btn rounded-xl bg-gradient-to-br from-neon-purple to-neon-purple p-2 text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0 ${
                       input.trim() ? 'shadow-neon-purple animate-glow hover:shadow-glow-md' : ''
                     }`}

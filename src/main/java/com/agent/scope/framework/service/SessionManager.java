@@ -76,6 +76,22 @@ public class SessionManager {
     }
 
     /**
+     * 按登录名查找会话（遍历本地缓存，用于自动批准等场景）。
+     *
+     * @param loginName 登录用户名
+     * @return 匹配的会话，若未找到返回 null
+     */
+    public UserSession findByLoginName(String loginName) {
+        if (loginName == null || loginName.isEmpty()) {
+            return null;
+        }
+        return sessionCache.values().stream()
+                .filter(s -> loginName.equals(s.getLoginName()))
+                .findFirst()
+                .orElse(null);
+    }
+
+    /**
      * 保存/更新会话。
      */
     public void save(UserSession session) {

@@ -69,10 +69,11 @@ public class PermissionConfig {
     @Bean
     public PermissionContextState permissionContextState() {
         AgentScopeProperties.Permission permission = properties.getPermission();
-        Boolean enabled = permission.isEnabled();
 
-        // enabled=false：纯 BYPASS，不放任何 ASK 规则，所有工具直接放行
-        if (enabled != null && !enabled) {
+        // enabled=false：纯 BYPASS，所有工具直接放行（含内置安全检查工具如 batch_control_device）
+        // 注意：BYPASS 模式本身无法绕过框架内置安全检查，
+        // 真正的自动批准由 RequireUserConfirmHandler 根据本配置实现
+        if (!permission.isEnabled()) {
             log.info("[PermissionConfig] 权限已禁用 (enabled=false)，所有工具直接放行");
             return PermissionContextState.builder()
                     .mode(PermissionMode.BYPASS)
