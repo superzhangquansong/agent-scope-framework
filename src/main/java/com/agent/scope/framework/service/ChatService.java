@@ -17,11 +17,17 @@ import com.agent.scope.framework.handler.AgentEventHandlerRegistry;
 import com.agent.scope.framework.handler.EventContext;
 import com.agent.scope.framework.hdl.ImageInfo;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.agentscope.core.ReActAgent;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.event.AgentEndEvent;
 import io.agentscope.core.event.AgentEvent;
 import io.agentscope.core.event.ConfirmResult;
 import io.agentscope.core.message.*;
+import io.agentscope.core.permission.PermissionBehavior;
+import io.agentscope.core.permission.PermissionContextState;
+import io.agentscope.core.permission.PermissionMode;
+import io.agentscope.core.permission.PermissionRule;
+import io.agentscope.core.state.AgentState;
 import io.agentscope.harness.agent.HarnessAgent;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -38,6 +44,7 @@ import reactor.core.Disposable;
 import reactor.core.publisher.Mono;
 
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -408,6 +415,10 @@ public class ChatService {
 
             activeEmitters.put(sessionId, emitter);
 
+            // 同步权限上下文（Nacos 热更新）：恢复执行前确保 AgentState 的权限上下文
+            // 与当前配置一致，避免恢复后仍因旧 ASK 规则再次触发 RequireUserConfirmEvent
+            syncPermissionContext(userId, sessionId);
+
             Disposable resumeSubscription = harnessAgent.streamEvents(resumeMsg, runtimeContext)
                     .doOnNext(event -> {
                         // 用户拒绝全部工具时，框架仍会继续推理（调用其他工具绕路），
@@ -553,6 +564,106 @@ public class ChatService {
         }
     }
 
+    /**
+     * 同步权限上下文到当前会话的 AgentState（支持 Nacos 热更新）。
+     * <p>
+     * 在每次 streamEvents 调用前执行，确保 AgentState 中的 PermissionContextState
+     * 与 Nacos 最新配置一致。解决 permission.enabled 从 true 改为 false 后
+     * ASK 规则仍残留在 AgentState/permissionEngineCache 中导致工具仍走人机确认的问题。
+     * </p>
+     * <p>
+     * 实现原理：
+     * <ol>
+     *   <li>通过 harnessAgent.getDelegate() 获取内部 ReActAgent</li>
+     *   <li>调用 getAgentState(userId, sessionId) 获取当前会话状态（触发 stateCache 缓存）</li>
+     *   <li>根据 AgentScopeProperties（@RefreshScope）当前值构建新的 PermissionContextState</li>
+     *   <li>若与 AgentState 中的上下文不一致，更新 state 并清除 permissionEngineCache</li>
+     *   <li>后续 activateSlotForContext 会从更新的 state 创建新 PermissionEngine</li>
+     * </ol>
+     * </p>
+     *
+     * @param userId    用户 ID
+     * @param sessionId 会话 ID
+     */
+    private void syncPermissionContext(String userId, String sessionId) {
+        try {
+            ReActAgent reActAgent = harnessAgent.getDelegate();
+            AgentState state = reActAgent.getAgentState(userId, sessionId);
+            PermissionContextState currentContext = buildPermissionContext();
+            PermissionContextState stateContext = state.getPermissionContext();
+
+            if (stateContext == null || !stateContext.equals(currentContext)) {
+                state.setPermissionContext(currentContext);
+                clearPermissionEngineCache(reActAgent);
+                log.info("[Chat] 权限上下文已同步: userId={}, sessionId={}, enabled={}, askTools={}",
+                        userId, sessionId,
+                        agentScopeProperties.getPermission().isEnabled(),
+                        agentScopeProperties.getPermission().getAskTools());
+            }
+        } catch (Exception e) {
+            log.warn("[Chat] 权限上下文同步失败（降级为当前状态）: userId={}, sessionId={}, error={}",
+                    userId, sessionId, e.getMessage());
+        }
+    }
+
+    /**
+     * 根据当前 Nacos 配置构建 PermissionContextState。
+     * <p>
+     * 与 PermissionConfig.permissionContextState() 逻辑一致，但读取的是
+     * @RefreshScope 刷新后的 AgentScopeProperties，确保热更新生效。
+     * </p>
+     * <ul>
+     *   <li>enabled=false：纯 BYPASS 模式，无 ASK 规则，所有工具直接放行</li>
+     *   <li>enabled=true：BYPASS 模式 + ask-tools 的 ASK 规则，仅指定工具触发确认</li>
+     * </ul>
+     *
+     * @return 当前配置对应的 PermissionContextState
+     */
+    private PermissionContextState buildPermissionContext() {
+        AgentScopeProperties.Permission permission = agentScopeProperties.getPermission();
+
+        // enabled=false：纯 BYPASS，所有工具直接放行（无 ASK 规则）
+        if (!permission.isEnabled()) {
+            return PermissionContextState.builder()
+                    .mode(PermissionMode.BYPASS)
+                    .build();
+        }
+
+        // enabled=true：BYPASS + ASK 规则（仅 ask-tools 中的工具触发 HITL 确认）
+        PermissionContextState.Builder builder = PermissionContextState.builder()
+                .mode(PermissionMode.BYPASS);
+
+        List<String> askTools = permission.getAskTools();
+        if (askTools != null) {
+            for (String toolName : askTools) {
+                builder.addAskRule(toolName,
+                        new PermissionRule(toolName, null, PermissionBehavior.ASK, "nacos"));
+            }
+        }
+
+        return builder.build();
+    }
+
+    /**
+     * 通过反射清除 ReActAgent 的 permissionEngineCache。
+     * <p>
+     * PermissionEngine 缓存在 ReActAgent 的 private final 字段中，
+     * 更新 AgentState 的权限上下文后需清除缓存，否则下次仍使用旧引擎
+     * （旧引擎持有旧 ASK 规则，导致 enabled=false 时仍触发 RequireUserConfirmEvent）。
+     * </p>
+     *
+     * @param reActAgent ReActAgent 实例
+     * @throws ReflectiveOperationException 反射访问失败
+     */
+    private void clearPermissionEngineCache(ReActAgent reActAgent) throws ReflectiveOperationException {
+        Field cacheField = ReActAgent.class.getDeclaredField("permissionEngineCache");
+        cacheField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        ConcurrentHashMap<String, Object> cache =
+                (ConcurrentHashMap<String, Object>) cacheField.get(reActAgent);
+        cache.clear();
+    }
+
     public void streamEvents(ChatStreamDTO dto, SseEmitter emitter) {
         String sessionId = dto.getSessionId();
         String userId = dto.getUserId();
@@ -591,6 +702,10 @@ public class ChatService {
             sendEvent(emitter, SSE_EVENT_AGENT_START, sessionId, Map.of());
 
             activeEmitters.put(sessionId, emitter);
+
+            // 同步权限上下文（Nacos 热更新）：确保 AgentState 的 PermissionContextState
+            // 与当前配置一致，enabled=false 时清除 ASK 规则使所有工具直接放行
+            syncPermissionContext(userId, sessionId);
 
             // 构建 Agent 消息：检测是否有待确认的权限请求（HITL ASKING 状态）
             Msg agentMessage = buildAgentMessageWithPermissionCheck(dto, sessionId);

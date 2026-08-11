@@ -6,6 +6,7 @@ import com.agent.scope.framework.middleware.ObservabilityMiddleware;
 import com.agent.scope.framework.middleware.PromptRefreshMiddleware;
 import com.agent.scope.framework.middleware.ResilienceMiddleware;
 import com.agent.scope.framework.middleware.ToolEnhancementMiddleware;
+import com.agent.scope.framework.service.DeviceContextService;
 import io.agentscope.core.middleware.MiddlewareBase;
 import io.agentscope.core.tracing.OtelTracingMiddleware;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
@@ -49,6 +50,7 @@ import java.util.Optional;
 public class MiddlewareChainConfig {
 
     private final AgentScopeProperties properties;
+    private final DeviceContextService deviceContextService;
 
     /**
      * 中间件链 Bean
@@ -101,10 +103,10 @@ public class MiddlewareChainConfig {
             log.info("[MiddlewareChainConfig] 已装配 ToolEnhancementMiddleware（工具超时+缓存）");
         }
 
-        // 5. 系统提示词热更新中间件（特性44增强）— Nacos 变更后无需重启即生效
+        // 5. 系统提示词热更新中间件（特性44增强）— Nacos 变更后无需重启即生效 + 设备列表上下文注入
         promptTemplateHolder.ifPresent(holder -> {
-            middlewares.add(new PromptRefreshMiddleware(holder));
-            log.info("[MiddlewareChainConfig] 已装配 PromptRefreshMiddleware（系统提示词 Nacos 热更新）");
+            middlewares.add(new PromptRefreshMiddleware(holder, deviceContextService));
+            log.info("[MiddlewareChainConfig] 已装配 PromptRefreshMiddleware（提示词热更新 + 设备列表注入）");
         });
 
         log.info("[MiddlewareChainConfig] 中间件链装配完成，共 {} 个中间件", middlewares.size());

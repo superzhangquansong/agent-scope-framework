@@ -4,6 +4,7 @@ import com.agent.scope.framework.context.SessionContext;
 import com.agent.scope.framework.hdl.port.AttributeMutexRules;
 import com.agent.scope.framework.hdl.port.HdlApiPort;
 import com.agent.scope.framework.hdl.port.SpkAttributeResolver;
+import com.agent.scope.framework.service.DeviceContextService;
 import com.agent.scope.framework.vo.ToolResultVO;
 import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONArray;
@@ -54,6 +55,9 @@ public class DeviceTool extends AbstractTool {
     /** 属性互斥规则端口（Nacos 热重载） */
     private final AttributeMutexRules attributeMutexRules;
 
+    /** 设备列表上下文缓存服务（缓存查询结果并注入系统提示词，避免重复查询） */
+    private final DeviceContextService deviceContextService;
+
     /** colorful 属性名（HDL 物模型协议字段） */
     private static final String ATTR_COLORFUL = "colorful";
 
@@ -68,15 +72,21 @@ public class DeviceTool extends AbstractTool {
      */
     @Tool(name = "query_device_list",
             description = "查询 HDL 设备列表。返回当前房屋下所有设备的 ID、名称、种类码、网关 ID、sid 等信息。"
-                    + "使用场景：控制设备或创建场景前必须先调用此工具获取真实 deviceId、gatewayId、sid、spk。"
-                    + "禁止事项：禁止根据用户描述编造设备 ID 或网关 ID，所有 ID 必须来自本工具的返回结果。",
+                    + "使用场景：全开/全关场景，或系统提示词中无缓存的设备列表时调用。"
+                    + "若系统提示词已包含【当前房屋设备列表（缓存）】，直接使用缓存数据，无需调用本工具。"
+                    + "禁止事项：禁止根据用户描述编造设备 ID 或网关 ID，所有 ID 必须来自本工具的返回结果或系统提示词中的缓存列表。",
             readOnly = true)
     public ToolResultVO queryDeviceList(RuntimeContext runtimeContext) {
         SessionContext sessionContext = resolveSessionContext(runtimeContext);
         log.info("[DeviceTool] 查询设备列表: userId={}, houseId={}",
                 sessionContext.getUserId(), sessionContext.getHouseId());
         // spk 传 null，查询全部设备（避免 LLM 传入错误 spk 导致过滤后为空）
-        return hdlApiPort.queryDeviceList(null, sessionContext);
+        ToolResultVO result = hdlApiPort.queryDeviceList(null, sessionContext);
+        // 缓存设备列表到 Redis，下次推理时注入系统提示词，LLM 无需再调用本工具
+        if (result.isSuccess() && result.getData() != null) {
+            deviceContextService.cacheDeviceList(sessionContext.getHouseId(), result.getData());
+        }
+        return result;
     }
 
     /**

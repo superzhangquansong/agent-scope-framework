@@ -176,8 +176,11 @@ public class AgentScopeProperties {
      */
     @Data
     public static class Memory {
+        /** 压缩摘要使用的模型名称（独立于主模型，建议用快速模型降低延迟） */
+        private String compactionModel = "qwen-turbo";
+
         /** 触发压缩的历史消息条数阈值 */
-        private int triggerMessages = 20;
+        private int triggerMessages = 30;
 
         /** 触发压缩的历史 token 阈值 */
         private int triggerTokens = 30000;

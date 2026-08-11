@@ -200,9 +200,7 @@ public class HarnessAgentConfig {
                 .model(dashScopeModel)
                 .maxIters(properties.getRootAgentMaxIters())
                 .toolkit(toolkit)
-                .compaction(compactionConfig)
-                .disableMemoryHooks()   // 禁用框架内置记忆钩子（自动摘要、事实提取等），避免 LLM 调用前同步阻塞
-                .disableMemoryTools();  // 禁用框架内置记忆工具（save/recall memory），项目使用自研 Redis 记忆系统
+                .compaction(compactionConfig);
 
         // 特性6/34：分布式状态存储（Redis），替代默认 JsonFileAgentStateStore
         agentStateStore.ifPresent(store -> {

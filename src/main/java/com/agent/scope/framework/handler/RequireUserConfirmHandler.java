@@ -77,17 +77,19 @@ public class RequireUserConfirmHandler implements AgentEventHandler<RequireUserC
         String sessionId = ctx.getSessionId();
 
         // 权限已禁用：自动批准所有工具调用，跳过前端确认流程
+        // 注意：正常情况下 syncPermissionContext 已在 streamEvents 前清除了 ASK 规则，
+        // 此分支不应被触发。若命中说明权限上下文同步失败（降级兜底路径）。
         if (properties.getPermission() != null && !properties.getPermission().isEnabled()) {
             // 防递归：confirmAndResume 创建的新订阅中，框架执行已确认工具时会再次触发
             // RequireUserConfirmEvent，此时该会话已在自动确认中，直接跳过避免无限递归
             if (!autoConfirmingSessions.add(sessionId)) {
-                log.info("[Handler] 会话已在自动确认流程中，跳过递归事件: sessionId={}, tools={}",
+                log.debug("[Handler] 会话已在自动确认流程中，跳过递归事件: sessionId={}, tools={}",
                         sessionId,
                         ruc.getToolCalls().stream().map(tcb -> tcb.getName()).toList());
                 return;
             }
             try {
-                log.info("[Handler] 权限已禁用，自动批准: sessionId={}, tools={}",
+                log.warn("[Handler] 权限已禁用但仍触发确认事件（syncPermissionContext 降级兜底）: sessionId={}, tools={}",
                         sessionId,
                         ruc.getToolCalls().stream().map(tcb -> tcb.getName()).toList());
 

@@ -92,6 +92,23 @@ scope:
     # HarnessAgent 名称
     harness-agent-name: scope-harness
 
+    # 上下文压缩配置（Memory 内部类）
+    # compactionModel: 独立的压缩摘要模型（qwen-turbo 快速廉价，避免 qwen-plus 10-15s 延迟）
+    # triggerMessages: 触发压缩的消息条数阈值（30 = 约 15 轮对话后触发）
+    memory:
+      compaction-model: qwen-turbo
+      trigger-messages: 30
+      trigger-tokens: 30000
+      keep-messages: 5
+      keep-tokens: 5000
+      flush-before-compact: true
+      offload-before-compact: true
+      max-arg-length: 5000
+      truncation-text: "[truncated]"
+      eviction-max-result-chars: 20000
+      eviction-preview-chars: 500
+      eviction-path: "memory/evicted/"
+
     # DashScope（通义千问）模型配置
     dashscope:
       api-key: ${DASHSCOPE_API_KEY:sk-2f8c9cb9fa9f4a78a2e7133b391ca6a2}
@@ -194,6 +211,8 @@ scope:
         8. 若 load_skill_through_path 返回技能不存在或目录为空，向用户说明当前无可用技能，并询问用户是否需要上传技能包
         9. 禁止在回复中询问用户"是否执行"或"是否确认"，系统会自动通过 HITL 权限确认机制向用户征求同意
         10. 技能文档是"操作指南"，http_request 是"执行能力"，两者必须配合使用：先 load_skill_through_path 读文档 → 再 http_request 发请求
+        11. 设备控制优化：如果系统提示词末尾已包含【当前房屋设备列表（缓存）】，说明设备信息已预加载，直接使用表格中的 deviceId/gatewayId/spk 调用 batch_control_device，无需再调用 query_device_list。仅在全开/全关场景或设备列表不存在时调用 query_device_list
+        12. 【响应速度优化】调用工具时禁止输出冗长解释文本，直接调用工具。禁止输出"我需要先..."、"根据系统提示词..."、"从缓存设备列表中..."等推理过程文本。仅在工具调用完成后的最终回复中向用户简要说明执行结果
 
         【可用工具清单 — 智能家居业务】
         - query_device_list: 查询当前房屋所有设备列表（返回deviceId/gatewayId/spk/设备名）
