@@ -1823,6 +1823,42 @@ export async function getRagChunks(docCode: string): Promise<RagChunk[]> {
 }
 
 /**
+ * 中断指定会话的 Agent 执行。
+ *
+ * 调用后端 POST /api/v1/chat/interrupt 接口，
+ * 执行双重中断：框架中断信号 + Reactor 订阅 dispose。
+ *
+ * @param userId    用户 ID（loginName）
+ * @param sessionId 会话 ID（UUID）
+ * @returns 中断结果
+ */
+export async function interruptSession(
+  userId: string,
+  sessionId: string,
+): Promise<{ success: boolean; message: string; subscriptionDisposed: boolean }> {
+  const headers: Record<string, string> = { [API_KEY_HEADER]: API_KEY_VALUE };
+  const token = getSessionToken();
+  if (token) headers[SESSION_TOKEN_HEADER] = token;
+
+  const params = new URLSearchParams({ userId, sessionId });
+  const r = await fetch(`${API_BASE}/api/v1/chat/interrupt?${params.toString()}`, {
+    method: 'POST',
+    headers,
+  });
+
+  if (!r.ok) {
+    throw new Error(`中断请求失败: HTTP ${r.status}`);
+  }
+
+  const data = await r.json();
+  return {
+    success: data.success ?? false,
+    message: data.data?.message ?? '',
+    subscriptionDisposed: data.data?.subscriptionDisposed ?? false,
+  };
+}
+
+/**
  * 上传文档（带配置参数，v4.4.4 新增）。
  *
  * <p>使用 FormData 上传文件，并将分段大小、重叠、摘要生成等配置作为 form field 一并提交。

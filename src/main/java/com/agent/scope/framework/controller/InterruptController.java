@@ -67,8 +67,8 @@ public class InterruptController {
 
         if (!isValidUserId(userId) || !isValidSessionId(sessionId)) {
             String hint = String.format(
-                    "参数格式错误: userId 应为纯数字, sessionId 应为 32 位十六进制字符串。"
-                            + "当前 userId=%s, sessionId=%s。请检查是否传反。",
+                    "参数格式错误: userId 不能为空, sessionId 应为标准 UUID 格式 (8-4-4-4-12 十六进制字符)。"
+                            + "当前 userId=%s, sessionId=%s。",
                     userId, sessionId);
             log.warn("[Interrupt] {}", hint);
             throw new BusinessException(ErrorCode.INTERRUPT_PARAM_INVALID, hint);
@@ -96,17 +96,17 @@ public class InterruptController {
     }
 
     /**
-     * 校验用户 ID 格式（纯数字）。
+     * 校验用户 ID 格式（非空字符串，对应 loginName）。
      */
     private boolean isValidUserId(String userId) {
-        return userId != null && !userId.isBlank() && userId.matches("\\d+");
+        return userId != null && !userId.isBlank();
     }
 
     /**
-     * 校验会话 ID 格式（32 位十六进制字符串）。
+     * 校验会话 ID 格式（标准 UUID v4 格式：8-4-4-4-12 十六进制字符，含连字符）。
      */
     private boolean isValidSessionId(String sessionId) {
         return sessionId != null && !sessionId.isBlank()
-                && sessionId.matches("[0-9a-fA-F]{32}");
+                && sessionId.matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
     }
 }

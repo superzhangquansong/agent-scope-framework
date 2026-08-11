@@ -7,7 +7,6 @@ import io.agentscope.core.permission.PermissionRule;
 import io.agentscope.core.permission.PermissionBehavior;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -38,14 +37,12 @@ import java.util.List;
 @Slf4j
 @Configuration
 @RequiredArgsConstructor
-@ConditionalOnProperty(prefix = "scope.agentscope.permission", name = "enabled",
-        havingValue = "true", matchIfMissing = true)
 public class PermissionConfig {
 
     private final AgentScopeProperties properties;
 
     /**
-     * 权限上下文状态 Bean
+     * 权限上下文状态 Bean（始终创建，根据 enabled 配置决定行为）。
      * <p>
      * 官方文档：<a href="https://java.agentscope.io/v2/zh/docs/building-blocks/permission-system.html">Permission System</a>
      * </p>
@@ -61,12 +58,27 @@ public class PermissionConfig {
      *   <li>Deny 规则不可绕过，即使在 BYPASS 模式下也照常生效</li>
      * </ul>
      * </p>
+     * <p>
+     * <b>enabled=false 时</b>：返回纯 BYPASS 模式（无任何 ASK 规则），所有工具直接放行。
+     * 必须始终创建 Bean，否则框架退回默认 DEFAULT 模式（ASK 所有工具），
+     * 导致 enabled=false 不生效。
+     * </p>
      *
      * @return PermissionContextState 权限上下文状态
      */
     @Bean
     public PermissionContextState permissionContextState() {
         AgentScopeProperties.Permission permission = properties.getPermission();
+        Boolean enabled = permission.isEnabled();
+
+        // enabled=false：纯 BYPASS，不放任何 ASK 规则，所有工具直接放行
+        if (enabled != null && !enabled) {
+            log.info("[PermissionConfig] 权限已禁用 (enabled=false)，所有工具直接放行");
+            return PermissionContextState.builder()
+                    .mode(PermissionMode.BYPASS)
+                    .build();
+        }
+
         List<String> askTools = permission.getAskTools();
 
         // BYPASS 模式：除显式 deny/ask 规则外，其余工具默认直接放行

@@ -13,6 +13,7 @@ import {
   type ImageInfo,
   type PermissionPausedData,
   confirmPermission,
+  interruptSession,
 } from './api/client';
 import { useSSE } from './hooks/useSSE';
 import { useVoiceAssistant } from './hooks/useVoiceAssistant';
@@ -477,6 +478,21 @@ export default function App() {
 
   // 将 abort 存入 ref（必须在 useSSE 之后执行）
   abortSseRef.current = abort;
+
+  // ===== 中断处理：调用后端 /api/v1/chat/interrupt + 本地 abort =====
+  const handleInterrupt = useCallback(async () => {
+    const userId = sessionStatusRef.current?.loginName || '';
+    const sessionId = getSessionUuid();
+    // 先本地 abort（立即关闭 SSE）
+    abortSseRef.current();
+    // 异步调用后端中断接口（不阻塞 UI）
+    try {
+      const result = await interruptSession(userId, sessionId);
+      console.log('[Interrupt] 后端中断结果:', result);
+    } catch (e) {
+      console.warn('[Interrupt] 后端中断调用失败（本地已 abort）:', e);
+    }
+  }, []);
 
   // ===== HITL 权限确认处理 =====
   /** 用户点击"确认"：调用 /api/v1/chat/confirm 恢复 Agent 执行 */
@@ -1216,7 +1232,7 @@ export default function App() {
                 {/* 中断/发送按钮：sending 时显示为中断按钮，收到 result 后可输入新消息 */}
                 {sending && !resultReceivedRef.current ? (
                   <button
-                    onClick={() => abortSseRef.current()}
+                    onClick={handleInterrupt}
                     className="shrink-0 rounded-xl bg-gradient-to-br from-red-500 to-red-600 p-2 text-white transition-all shadow-lg shadow-red-500/20 hover:shadow-red-500/40"
                     title="中断当前操作"
                   >

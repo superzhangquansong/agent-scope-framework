@@ -14,6 +14,8 @@ import { sendChat, type SseCallbacks, type ImageInfo } from '../api/client';
 export function useSSE(callbacks: SseCallbacks) {
   const [sending, setSending] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  /** 调用计数器：防止旧 send 的 finally 覆盖新 send 的状态 */
+  const callIdRef = useRef(0);
 
   // 用 ref 保存最新回调，避免每次渲染重建 send 闭包
   const callbacksRef = useRef(callbacks);
@@ -28,12 +30,19 @@ export function useSSE(callbacks: SseCallbacks) {
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
+
+      // 递增调用 ID，标记当前是最新调用
+      const callId = ++callIdRef.current;
+
       setSending(true);
       try {
         await sendChat(message, history, callbacksRef.current, controller.signal, images, houseId);
       } finally {
-        setSending(false);
-        abortRef.current = null;
+        // 只有当前调用仍是最新时，才重置状态（防止旧 finally 覆盖新调用）
+        if (callIdRef.current === callId) {
+          setSending(false);
+          abortRef.current = null;
+        }
       }
     },
     [],
@@ -41,6 +50,8 @@ export function useSSE(callbacks: SseCallbacks) {
 
   /** 中断当前请求 */
   const abort = useCallback(() => {
+    // 递增 callId，使旧 send 的 finally 不会覆盖 abort 的重置
+    callIdRef.current++;
     abortRef.current?.abort();
     abortRef.current = null;
     setSending(false);
