@@ -74,12 +74,22 @@ public class PermissionConfig {
         AgentScopeProperties.Permission permission = properties.getPermission();
         List<String> askTools = permission.getAskTools();
 
-        log.info("[PermissionConfig] 创建权限上下文: mode=ACCEPT_EDITS, askTools={} (不注册显式ASK规则，依赖默认ASK行为)", askTools);
+        // 使用 DEFAULT 模式：不自动 ASK 任何工具，完全由 Nacos ask-tools 列表控制
+        // Nacos 配置中列出的工具（如 batch_control_device）会被注册为显式 ASK 规则，
+        // 未列出的工具（如 create_scene、execute_scene）则直接 ALLOW
+        PermissionContextState.Builder builder = PermissionContextState.builder()
+                .mode(PermissionMode.DEFAULT);
 
-        // 不注册显式 ASK 规则：ACCEPT_EDITS 模式下非只读工具自动走 default ASK，
-        // 用户确认后通过 ConfirmResult 添加 ALLOW 规则可在 default ASK 之前匹配，避免循环确认
-        return PermissionContextState.builder()
-                .mode(PermissionMode.ACCEPT_EDITS)
-                .build();
+        // 将 Nacos ask-tools 列表中的每个工具注册为显式 ASK 规则
+        if (askTools != null) {
+            for (String toolName : askTools) {
+                builder.addAskRule(toolName,
+                        new PermissionRule(toolName, null, PermissionBehavior.ASK, "nacos"));
+                log.info("[PermissionConfig] 注册 ASK 规则: tool={}", toolName);
+            }
+        }
+
+        log.info("[PermissionConfig] 权限上下文创建完成: mode=DEFAULT, askTools={}", askTools);
+        return builder.build();
     }
 }

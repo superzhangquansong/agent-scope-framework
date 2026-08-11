@@ -254,8 +254,6 @@ scope:
       memory-tools-enabled: true
       skill-repository-enabled: true
       otel-tracing-enabled: true
-      permission-enabled: true
-      permission-ask-tools: "batch_control_device"
       interrupt-enabled: true
       filesystem-enabled: true
       filesystem-type: local
