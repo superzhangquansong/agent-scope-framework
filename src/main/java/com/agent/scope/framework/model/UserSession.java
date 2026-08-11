@@ -1,6 +1,7 @@
 package com.agent.scope.framework.model;
 
 import com.agent.scope.framework.hdl.HdlHome;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
 
 import java.io.Serial;
@@ -42,21 +43,28 @@ public class UserSession implements Serializable {
     /** 当前房屋名称 */
     private String currentHomeName;
 
-    /** 房屋列表缓存 */
+    /** 房屋列表缓存（不持久化，按需重新加载） */
+    @JsonIgnore
     private List<HdlHome> homeCache;
 
     /** 房屋缓存时间戳 */
+    @JsonIgnore
     private long homeCacheTime;
 
-    /** 设备列表缓存 */
+    /** 设备列表缓存（不持久化，按需重新加载） */
+    @JsonIgnore
     private List<Object> deviceCache;
 
     /** 设备缓存时间戳 */
+    @JsonIgnore
     private long deviceCacheTime;
 
     /**
      * 是否已登录（有 HDL Token 视为登录）。
+     * <p>加 @JsonIgnore 防止 Jackson 将 boolean getter 序列化为 "loggedIn" 字段，
+     * 避免反序列化时因类中无此字段抛 UnrecognizedPropertyException。</p>
      */
+    @JsonIgnore
     public boolean isLoggedIn() {
         return hdlAccessToken != null && !hdlAccessToken.isEmpty();
     }

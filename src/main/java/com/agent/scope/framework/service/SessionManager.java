@@ -1,6 +1,8 @@
 package com.agent.scope.framework.service;
 
 import com.agent.scope.framework.model.UserSession;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -28,6 +30,10 @@ public class SessionManager {
 
     /** Redis Key 前缀 */
     private static final String REDIS_KEY_PREFIX = "scope:session:";
+
+    /** Jackson 序列化器（线程安全，静态复用） */
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
+            .registerModule(new JavaTimeModule());
 
     /** 本地会话缓存（ConcurrentHashMap，expireAfterAccess 由定时清理 + 惰性清除实现） */
     private final ConcurrentHashMap<String, UserSession> sessionCache = new ConcurrentHashMap<>();
@@ -104,24 +110,44 @@ public class SessionManager {
         return UUID.randomUUID().toString().replace("-", "");
     }
 
-    /** 写入 Redis（如可用） */
+    /** 写入 Redis（序列化完整 UserSession JSON） */
     private void saveToRedis(String token, UserSession session) {
-        if (redisTemplate == null) return;
+        if (redisTemplate == null) {
+            log.warn("[SessionManager] Redis 不可用，跳过持久化: token={}", token);
+            return;
+        }
         try {
+            String json = OBJECT_MAPPER.writeValueAsString(session);
             redisTemplate.opsForValue().set(REDIS_KEY_PREFIX + token,
-                    token, EXPIRE_HOURS, TimeUnit.HOURS);
+                    json, EXPIRE_HOURS, TimeUnit.HOURS);
+            log.info("[SessionManager] Redis 写入成功: token={}, loginName={}, jsonLen={}",
+                    token, session.getLoginName(), json.length());
         } catch (Exception e) {
-            log.warn("[SessionManager] Redis 写入失败: token={}", token, e.getMessage());
+            log.warn("[SessionManager] Redis 写入失败: token={}, error={}", token, e.toString());
         }
     }
 
-    /** 从 Redis 读取 */
+    /** 从 Redis 读取并反序列化 UserSession */
     private UserSession loadFromRedis(String token) {
-        if (redisTemplate == null) return null;
+        if (redisTemplate == null) {
+            log.debug("[SessionManager] Redis 不可用，跳过加载: token={}", token);
+            return null;
+        }
         try {
             String json = redisTemplate.opsForValue().get(REDIS_KEY_PREFIX + token);
-            return json != null ? sessionCache.get(token) : null;
+            if (json == null || json.isBlank()) {
+                log.info("[SessionManager] Redis 中无会话数据: token={}", token);
+                return null;
+            }
+            log.info("[SessionManager] Redis 读取原始数据: token={}, jsonLen={}, preview={}",
+                    token, json.length(),
+                    json.length() > 80 ? json.substring(0, 80) + "..." : json);
+            UserSession session = OBJECT_MAPPER.readValue(json, UserSession.class);
+            log.info("[SessionManager] Redis 反序列化成功: token={}, loginName={}",
+                    token, session.getLoginName());
+            return session;
         } catch (Exception e) {
+            log.warn("[SessionManager] Redis 读取失败: token={}, error={}", token, e.toString());
             return null;
         }
     }

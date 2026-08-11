@@ -47,24 +47,19 @@ public class PermissionConfig {
     /**
      * 权限上下文状态 Bean
      * <p>
-     * 配置权限系统的全局模式：
-     * - 模式：ACCEPT_EDITS（只读工具自动放行，非只读工具走默认 ASK）
+     * 官方文档：<a href="https://java.agentscope.io/v2/zh/docs/building-blocks/permission-system.html">Permission System</a>
      * </p>
      * <p>
-     * <b>关键设计——不注册显式 ASK 规则的原因</b>：
-     * <p>
-     * AgentScope 2.0.0 权限引擎的评估顺序为 {@code deny → ask → allow → default}。
-     * 若注册了显式 ASK 规则（步骤2），则即使用户确认后通过 ConfirmResult 添加了 ALLOW 规则（步骤4），
-     * ASK 规则仍会先匹配，导致同一工具的后续调用再次触发 HITL，形成无限确认循环。
+     * 权限引擎评估流程：deny → ask → tool-checks → allow → ... → BYPASS → DONT_ASK → otherwise ASK。
      * </p>
      * <p>
-     * 解决方案：不注册显式 ASK 规则。在 ACCEPT_EDITS 模式下：
+     * <b>设计策略——BYPASS 白名单模式</b>：
      * <ul>
-     *   <li>只读工具（readOnly=true）：由 checkExploreMode 自动 ALLOW（步骤3）</li>
-     *   <li>非只读工具（如 batch_control_device）：无显式规则 → 走 default ASK（步骤6）</li>
+     *   <li>BYPASS 模式：默认放行所有工具（步骤7），"放行一切（deny / ask 规则仍生效）"</li>
+     *   <li>ASK 规则（步骤2）先于 BYPASS（步骤7）评估，因此 Nacos ask-tools 中的敏感工具
+     *       仍会触发 HITL 人机交互确认</li>
+     *   <li>Deny 规则不可绕过，即使在 BYPASS 模式下也照常生效</li>
      * </ul>
-     * 用户首次确认后，ConfirmResult 添加的 ALLOW 规则在步骤4匹配（先于步骤6的 default ASK），
-     * 从而实现"首次确认后自动放行后续相同工具调用"。
      * </p>
      *
      * @return PermissionContextState 权限上下文状态
@@ -74,22 +69,20 @@ public class PermissionConfig {
         AgentScopeProperties.Permission permission = properties.getPermission();
         List<String> askTools = permission.getAskTools();
 
-        // 使用 DEFAULT 模式：不自动 ASK 任何工具，完全由 Nacos ask-tools 列表控制
-        // Nacos 配置中列出的工具（如 batch_control_device）会被注册为显式 ASK 规则，
-        // 未列出的工具（如 create_scene、execute_scene）则直接 ALLOW
+        // BYPASS 模式：除显式 deny/ask 规则外，其余工具默认直接放行
         PermissionContextState.Builder builder = PermissionContextState.builder()
-                .mode(PermissionMode.DEFAULT);
+                .mode(PermissionMode.BYPASS);
 
-        // 将 Nacos ask-tools 列表中的每个工具注册为显式 ASK 规则
+        // 为 Nacos ask-tools 中的敏感工具注册 ASK 规则，
+        // ASK 步骤先于 BYPASS 步骤，敏感工具仍会触发 HITL 确认
         if (askTools != null) {
             for (String toolName : askTools) {
                 builder.addAskRule(toolName,
                         new PermissionRule(toolName, null, PermissionBehavior.ASK, "nacos"));
-                log.info("[PermissionConfig] 注册 ASK 规则: tool={}", toolName);
             }
         }
 
-        log.info("[PermissionConfig] 权限上下文创建完成: mode=DEFAULT, askTools={}", askTools);
+        log.info("[PermissionConfig] 权限上下文: mode=BYPASS, askTools={}, 其余工具默认放行", askTools);
         return builder.build();
     }
 }

@@ -327,7 +327,7 @@ public class AgentScopeProperties {
         /** 是否启用权限系统（HITL 人机交互），默认启用 */
         private boolean enabled = true;
 
-        /** 需人工审批的敏感工具名称列表 */
+        /** 需人工审批的工具名称列表（注册为 ASK 规则），其余工具默认 ALLOW */
         private List<String> askTools = new ArrayList<>();
     }
 
