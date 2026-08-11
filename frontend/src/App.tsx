@@ -191,6 +191,8 @@ export default function App() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   /** 当前流式 AI 消息 ID（供 SSE 回调定位更新） */
   const streamingMsgIdRef = useRef<string | null>(null);
+  /** send 版本号：防止旧 handleSend 的 finally 覆盖新 handleSend 的 streamingMsgIdRef */
+  const sendIdRef = useRef(0);
   /** HITL 权限暂停前的消息 ID（handleSend finally 置 null 后保留，供 confirm 恢复使用） */
   const hitlMsgIdRef = useRef<string | null>(null);
   /** result 事件是否已到达（用于提前启用输入框，不等 done） */
@@ -846,7 +848,6 @@ export default function App() {
     // 重置多意图 result 计数器（v3.6.0 多意图支持：本次发送收到的首个 result 更新现有消息，后续 result 创建新便利贴）
     resultCountRef.current = 0;
     resultReceivedRef.current = false;
-    streamingMsgIdRef.current = aiMsgId;
     setMessages(prev => [...prev, {
       id: aiMsgId,
       role: 'assistant',
@@ -860,7 +861,14 @@ export default function App() {
       .filter(m => m.content)
       .map(m => ({ role: m.role, content: m.content }));
 
-    // 4. 发起 SSE（多模态：文字 + 图片 + 房屋 ID 一起发送给后端 /chat/send 接口）
+    // 4. 先 abort 旧 SSE，再设新 streamingMsgIdRef
+    //    否则旧 SSE 残余事件可能用新 ID 更新消息，导致 UI 混乱
+    abortSseRef.current();
+    streamingMsgIdRef.current = aiMsgId;
+    // 递增 send 版本号，旧 handleSend 的 finally 发现版本不匹配会跳过清理
+    const sendId = ++sendIdRef.current;
+
+    // 5. 发起 SSE（多模态：文字 + 图片 + 房屋 ID 一起发送给后端 /chat/send 接口）
     try {
       await send(text, history, imagesToSend.length > 0 ? imagesToSend : undefined, sessionStatusRef.current?.currentHomeId);
     } catch (e: unknown) {
@@ -872,7 +880,10 @@ export default function App() {
         error: true,
       }));
     } finally {
-      streamingMsgIdRef.current = null;
+      // 仅当当前 send 仍是最新版本时才清理（防止旧 send 的 finally 覆盖新 send 的 ref）
+      if (sendIdRef.current === sendId) {
+        streamingMsgIdRef.current = null;
+      }
     }
   }, [input, sending, messages, send, updateMessage, pendingImages, clearPendingImages]);
 

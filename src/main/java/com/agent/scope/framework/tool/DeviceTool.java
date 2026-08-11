@@ -122,6 +122,7 @@ public class DeviceTool extends AbstractTool {
                     + "多设备合并：用户输入可能没有逗号分隔符（如'调光开冷色亮度48RGB开红色亮度88'），"
                     + "这是多个设备控制指令连写，必须识别为多设备控制合并为一次 batch_control_device 调用，禁止拆分成多次调用。"
                     + "禁止事项：禁止编造设备 ID、网关 ID 或种类码；禁止使用示例值。",
+            readOnly = true,
             concurrencySafe = false)
     public ToolResultVO batchControlDevice(
             @ToolParam(name = "actionsJson", required = true,
