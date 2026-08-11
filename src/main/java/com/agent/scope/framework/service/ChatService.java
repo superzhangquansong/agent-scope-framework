@@ -595,6 +595,23 @@ public class ChatService {
             if (stateContext == null || !stateContext.equals(currentContext)) {
                 state.setPermissionContext(currentContext);
                 clearPermissionEngineCache(reActAgent);
+
+                // 关键：将更新后的 AgentState 持久化回 Redis stateStore。
+                // activateSlotForContext 在 stateStore != null 时会重新从 Redis 加载 AgentState
+                // （loadOrCreateAgentStateForSlot → stateStore.get），覆盖 stateCache 中的更新。
+                // 若不持久化，syncPermissionContext 的更新会被 activateSlotForContext 覆盖，
+                // 导致 permission.enabled 从 false 改为 true 后仍使用旧的 BYPASS 无 ASK 上下文。
+                agentStateStore.ifPresent(store -> {
+                    try {
+                        store.save(userId, sessionId, "agent_state", state);
+                        log.debug("[Chat] AgentState 已持久化到 stateStore: userId={}, sessionId={}",
+                                userId, sessionId);
+                    } catch (Exception saveEx) {
+                        log.warn("[Chat] AgentState 持久化失败: userId={}, sessionId={}, error={}",
+                                userId, sessionId, saveEx.getMessage());
+                    }
+                });
+
                 log.info("[Chat] 权限上下文已同步: userId={}, sessionId={}, enabled={}, askTools={}",
                         userId, sessionId,
                         agentScopeProperties.getPermission().isEnabled(),
