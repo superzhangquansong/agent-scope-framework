@@ -98,6 +98,13 @@ public class ChatService {
     private final RedisRateLimiterService redisRateLimiterService;
 
     /**
+     * AgentStateStore（可选注入，用于清除残留的 ASKING 状态）。
+     * <p>当 PendingConfirmationService TTL 过期但框架 RedisAgentStateStore 仍保留
+     * ASKING 状态时，通过此引用调用 delete(userId, sessionId) 清除残留状态。</p>
+     */
+    private final Optional<io.agentscope.core.state.AgentStateStore> agentStateStore;
+
+    /**
      * StringRedisTemplate（可选注入，用于跨实例中断消息发布/订阅）。
      * <p>Redis 不可用时为空，此时中断仅在本实例生效。</p>
      */
@@ -657,8 +664,8 @@ public class ChatService {
 
                         // 检测残留 ASKING 状态错误（Redis 中有持久化状态但本次消息未携带 ConfirmResult）
                         if (errMsg.contains(ASKING_ERROR_KEYWORD)) {
-                            log.warn("[Chat] 检测到残留 ASKING 状态: sessionId={}, 尝试从 Redis 恢复待确认数据", sessionId);
-                            handleAskingResidualError(emitter, sessionId);
+                            log.warn("[Chat] 检测到残留 ASKING 状态: sessionId={}, userId={}, 尝试清除并恢复", sessionId, userId);
+                            handleAskingResidualError(emitter, sessionId, userId);
                         } else {
                             try {
                                 sendEvent(emitter, SSE_EVENT_ERROR, sessionId, Map.of(
@@ -710,13 +717,21 @@ public class ChatService {
     /**
      * 处理残留 ASKING 状态错误。
      * <p>当 AgentScope 报 "paused for human-in-the-loop confirmation" 错误时，
-     * 尝试从 Redis 恢复待确认数据并重新发送 permission_ask 事件；
-     * 若 Redis 中无数据，则提示用户开启新会话。</p>
+     * 说明框架的 RedisAgentStateStore 中仍保留了上一轮的 ASKING 状态（工具调用待确认），
+     * 但 PendingConfirmationService 的 TTL（30分钟）可能已过期导致无法恢复 ConfirmResult。</p>
+     *
+     * <p>处理策略：</p>
+     * <ol>
+     *   <li>先从 Redis 加载待确认数据，若有则重新发送 permission_ask 事件</li>
+     *   <li>若 PendingConfirmationService 数据已过期（空），则调用 AgentStateStore.delete()
+     *       清除框架残留 ASKING 状态，通知前端刷新会话后重试</li>
+     * </ol>
      *
      * @param emitter   SSE 发射器
      * @param sessionId 会话 ID
+     * @param userId    用户 ID（用于清除框架状态）
      */
-    private void handleAskingResidualError(SseEmitter emitter, String sessionId) {
+    private void handleAskingResidualError(SseEmitter emitter, String sessionId, String userId) {
         List<ToolCallInfo> pending = pendingConfirmationService.loadPendingConfirmations(sessionId);
         if (!pending.isEmpty()) {
             log.info("[Chat] 从 Redis 恢复待确认数据成功，重新发送权限确认: sessionId={}", sessionId);
@@ -732,17 +747,28 @@ public class ChatService {
                 sendEvent(emitter, SSE_EVENT_PERMISSION_PAUSED, sessionId, Map.of(
                         "message", MSG_ASKING_RESIDUAL));
             } catch (IllegalStateException e) {
-                // Emitter已关闭（客户端断开），无需重发权限确认
                 log.debug("[Chat] 重新发送 permission_ask 失败(emitter已关闭): sessionId={}", sessionId);
             } catch (IOException e) {
                 log.warn("[Chat] 重新发送 permission_ask 失败: {}", e.getMessage());
             }
         } else {
-            log.warn("[Chat] Redis 中无待确认数据，需清除残留状态: sessionId={}", sessionId);
+            // PendingConfirmationService 的 TTL 已过期，但框架的 RedisAgentStateStore 仍保留了 ASKING 状态
+            // 需要清除框架状态，让用户下次消息能正常执行
+            log.warn("[Chat] PendingConfirm 已过期，清除框架残留 ASKING 状态: sessionId={}, userId={}", sessionId, userId);
+            pendingConfirmationService.clearPendingConfirmations(sessionId);
+            // 调用 AgentStateStore.delete() 删除框架在 Redis 中的持久化状态
+            agentStateStore.ifPresent(store -> {
+                try {
+                    store.delete(userId, sessionId);
+                    log.info("[Chat] 已清除框架残留状态: userId={}, sessionId={}", userId, sessionId);
+                } catch (Exception ex) {
+                    log.warn("[Chat] 清除框架状态失败: userId={}, sessionId={}, error={}", userId, sessionId, ex.getMessage());
+                }
+            });
             try {
                 sendEvent(emitter, SSE_EVENT_ERROR, sessionId, Map.of(
                         "error", Map.of("code", ERROR_CODE_AGENT_ERROR,
-                                "message", MSG_ASKING_RESIDUAL_NO_DATA)));
+                                "message", "上一轮会话的权限确认状态已过期，请在前端刷新会话后重新发送消息")));
             } catch (IOException ignored) {
             }
         }

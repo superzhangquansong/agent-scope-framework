@@ -369,10 +369,10 @@ export default function App() {
     },
     onError: (data) => {
       const id = streamingMsgIdRef.current;
+      // 脱敏：过滤掉程序内部信息（JSON出参、堆栈、异常类名等），避免向用户暴露实现细节
+      const raw = data?.message || data?.error || '处理失败';
+      const sanitized = sanitizeErrorMessage(raw);
       if (id) {
-        // 脱敏：过滤掉程序内部信息（JSON出参、堆栈、异常类名等），避免向用户暴露实现细节
-        const raw = data?.message || data?.error || '处理失败';
-        const sanitized = sanitizeErrorMessage(raw);
         updateMessage(id, m => ({
           ...m,
           content: sanitized,
@@ -380,6 +380,15 @@ export default function App() {
           error: true,
         }));
       }
+      // 检测残留 ASKING 状态：后端已清除框架状态，刷新 session 后自动重试
+       if (raw.includes('权限确认状态已过期') || raw.includes('请在前端刷新会话')) {
+         refreshSessionUuid();
+         // 自动重发上一条用户消息
+         const lastUserMsg = messages[messages.length - 1];
+         if (lastUserMsg && lastUserMsg.role === 'user') {
+           setTimeout(() => handleSendRef.current(lastUserMsg.content), 500);
+         }
+       }
       // 出错后也恢复唤醒词监听，确保持续对话
       if (voice.enabled) {
         voiceResumeRef.current();
