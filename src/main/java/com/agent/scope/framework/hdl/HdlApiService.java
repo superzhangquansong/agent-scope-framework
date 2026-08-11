@@ -414,7 +414,13 @@ public class HdlApiService implements HdlApiPort {
                 }
             }
 
-            return buildSuccessResult("设备控制成功", devices,
+            // 包装为前端 DeviceStatusPage 期望的格式：{devices: [...], multiDevice: boolean}
+            Map<String, Object> resultData = new LinkedHashMap<>();
+            resultData.put("devices", devices);
+            if (devices.size() > 1) {
+                resultData.put("multiDevice", true);
+            }
+            return buildSuccessResult("设备控制成功", resultData,
                     ROUTE_DEVICE_STATUS, BROADCAST_DEVICE_STATUS);
         } catch (Exception e) {
             log.error("[HdlApiService] 批量控制设备异常", e);

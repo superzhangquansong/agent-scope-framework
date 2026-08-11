@@ -504,9 +504,11 @@ async function readSseStream(
   let buffer = '';
   /** SSE 流读取超时（毫秒）：120 秒无数据则自动中止（LLM 首 token 可能需等待 compaction + 推理） */
   const SSE_READ_TIMEOUT = 120_000;
+  /** 是否已收到 [DONE] 标记 */
+  let streamDone = false;
 
   try {
-    while (true) {
+    while (!streamDone) {
       if (signal?.aborted) {
         await reader.cancel();
         break;
@@ -525,10 +527,16 @@ async function readSseStream(
       for (const part of parts) {
         const evt = parseSseMessage(part);
         if (!evt) continue;
+        // 收到 [DONE] 标记后立即退出循环，避免 reader 阻塞导致 loading 状态卡死
+        if (evt.event === 'done' && evt.data === '[DONE]') {
+          dispatchSseEvent(evt, callbacks);
+          streamDone = true;
+          break;
+        }
         dispatchSseEvent(evt, callbacks);
       }
     }
-    if (buffer.trim()) {
+    if (!streamDone && buffer.trim()) {
       const evt = parseSseMessage(buffer);
       if (evt) dispatchSseEvent(evt, callbacks);
     }
@@ -655,6 +663,8 @@ function dispatchSseEvent(evt: { event: string; data: unknown }, callbacks: SseC
 
     // ===== agent_step 事件（ReAct 推理过程：model_call_*/tool_call_*/agent_* 等） =====
     case SSE_EVENT.AGENT_STEP:
+    case 'agent_start':
+    case 'agent_end':
     case 'model_call_start':
     case 'model_call_end':
     case 'tool_call_start':

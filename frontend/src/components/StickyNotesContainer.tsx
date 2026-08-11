@@ -266,13 +266,35 @@ function getRandomPosition(index: number, screenWidth: number, screenHeight: num
 function AgentStepsPanel({ steps, streaming, isThinkingPlaceholder }: { steps: AgentStepData[]; streaming?: boolean; isThinkingPlaceholder?: boolean }) {
   const [expanded, setExpanded] = useState(streaming || isThinkingPlaceholder);
 
+  /** 工具名 → 中文名映射 */
+  const TOOL_NAME_CN: Record<string, string> = {
+    query_device_list: '查询设备列表',
+    query_device_detail: '查询设备详情',
+    batch_control_device: '批量控制设备',
+    search_product: '搜索产品',
+    query_home_list: '查询房屋列表',
+    create_scene: '创建场景',
+    execute_scene: '执行场景',
+    load_skill_through_path: '加载技能文档',
+    http_request: 'HTTP 请求',
+  };
+
+  /** 获取工具中文名（无映射时返回原名） */
+  const getToolCnName = (toolName?: string) => {
+    if (!toolName) return 'unknown';
+    return TOOL_NAME_CN[toolName] ?? toolName;
+  };
+
   /** 根据步骤类型返回对应图标 */
   const renderStepIcon = (step: string, state?: string) => {
     const iconColor = state === 'FAILED' ? '#ff4d6d' : '#00ffff';
+    // agent_start / agent_end
     if (step === 'agent_start') return <Play size={11} color={iconColor} />;
     if (step === 'agent_end') return <CheckCircle2 size={11} color={iconColor} />;
-    if (step === 'llm_call') return <Brain size={11} color={iconColor} />;
-    if (step === 'tool_call') return <Wrench size={11} color={iconColor} />;
+    // model_call_* → LLM 推理
+    if (step.startsWith('model_call')) return <Brain size={11} color={iconColor} />;
+    // tool_call_* → 工具调用
+    if (step.startsWith('tool_call')) return <Wrench size={11} color={iconColor} />;
     return <Cpu size={11} color={iconColor} />;
   };
 
@@ -280,19 +302,20 @@ function AgentStepsPanel({ steps, streaming, isThinkingPlaceholder }: { steps: A
   const renderStepLabel = (step: AgentStepData): string => {
     const elapsed = step.elapsedMs != null ? ` · ${(step.elapsedMs / 1000).toFixed(1)}s` : '';
     const agent = step.agentId ? `[${step.agentId}] ` : '';
-    if (step.step === 'llm_call') {
+    // LLM 推理（model_call_start / model_call_end）
+    if (step.step.startsWith('model_call')) {
       const tokens = step.tokenCount ? ` · ${step.tokenCount} tokens` : '';
-      return `${agent}LLM 推理${step.modelName ? ` · ${step.modelName}` : ''}${tokens}${elapsed}`;
+      const phase = step.step === 'model_call_end' ? 'LLM 推理完成' : 'LLM 推理中';
+      return `${agent}${phase}${step.modelName ? ` · ${step.modelName}` : ''}${tokens}${elapsed}`;
     }
-    if (step.step === 'tool_call') {
-      return `${agent}工具调用 · ${step.toolName ?? 'unknown'}${step.state ? ` · ${step.state}` : ''}${elapsed}`;
+    // 工具调用（tool_call_start / tool_call_end）
+    if (step.step.startsWith('tool_call')) {
+      const phase = step.step === 'tool_call_end' ? '调用完成' : '调用中';
+      return `${agent}${getToolCnName(step.toolName)} · ${phase}${step.state ? ` · ${step.state}` : ''}${elapsed}`;
     }
-    if (step.step === 'agent_start') {
-      return `${agent}Agent 启动${elapsed}`;
-    }
-    if (step.step === 'agent_end') {
-      return `${agent}Agent 完成${elapsed}`;
-    }
+    // Agent 生命周期
+    if (step.step === 'agent_start') return `${agent}Agent 启动${elapsed}`;
+    if (step.step === 'agent_end') return `${agent}Agent 完成${elapsed}`;
     return `${agent}${step.message ?? step.step}${elapsed}`;
   };
 
