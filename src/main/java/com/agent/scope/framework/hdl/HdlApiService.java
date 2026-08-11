@@ -11,9 +11,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * HDL 业务 API 服务实现（六边形架构适配器）。
@@ -251,7 +253,7 @@ public class HdlApiService implements HdlApiPort {
     public ToolResultVO queryDeviceDetail(String deviceIds, SessionContext sessionContext) {
         try {
             Map<String, Object> data = new LinkedHashMap<>();
-            data.put("deviceIds", deviceIds);
+            data.put("deviceIds", parseDeviceIdsToLongList(deviceIds));
             data.put("homeId", sessionContext.getHouseId());
 
             HdlResponse resp = hdlApiClient.post(HdlApiConstants.DEVICE_INFO, data, true,
@@ -402,7 +404,7 @@ public class HdlApiService implements HdlApiPort {
             List<Map<String, Object>> devices = new ArrayList<>();
             if (deviceIdsForDetail != null && !deviceIdsForDetail.isEmpty()) {
                 Map<String, Object> detailData = new LinkedHashMap<>();
-                detailData.put("deviceIds", deviceIdsForDetail);
+                detailData.put("deviceIds", parseDeviceIdsToLongList(deviceIdsForDetail));
                 detailData.put("homeId", sessionContext.getHouseId());
                 HdlResponse detailResp = hdlApiClient.post(HdlApiConstants.DEVICE_INFO, detailData, true,
                         sessionContext.getAccessToken());
@@ -909,5 +911,25 @@ public class HdlApiService implements HdlApiPort {
             }
         }
         return result;
+    }
+
+    /**
+     * 解析设备 ID 字符串为 Long 列表。
+     *
+     * <p>HDL /device/info 接口的 deviceIds 参数类型为 List&lt;Long&gt;，
+     * 不能传逗号分隔字符串，否则报"参数类型解析异常"。</p>
+     *
+     * @param deviceIds 设备 ID 列表（逗号分隔字符串）
+     * @return 设备 ID Long 列表
+     */
+    private List<Long> parseDeviceIdsToLongList(String deviceIds) {
+        if (deviceIds == null || deviceIds.isEmpty()) {
+            return List.of();
+        }
+        return Arrays.stream(deviceIds.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .map(Long::parseLong)
+                .collect(Collectors.toList());
     }
 }

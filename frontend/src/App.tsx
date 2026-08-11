@@ -192,6 +192,8 @@ export default function App() {
   const streamingMsgIdRef = useRef<string | null>(null);
   /** HITL 权限暂停前的消息 ID（handleSend finally 置 null 后保留，供 confirm 恢复使用） */
   const hitlMsgIdRef = useRef<string | null>(null);
+  /** result 事件是否已到达（用于提前启用输入框，不等 done） */
+  const resultReceivedRef = useRef(false);
   /** 当前发送周期内收到的 result 事件数（v3.6.0 多意图支持，0=首个 result，>0=后续 result 创建新便利贴） */
   const resultCountRef = useRef(0);
   /** 登录后重发消息的定时器（卸载时清理） */
@@ -263,6 +265,7 @@ export default function App() {
       }
     },
     onResult: (data: ResultData) => {
+      resultReceivedRef.current = true; // UI 已渲染，允许输入
       const id = streamingMsgIdRef.current;
       const routePath = data?.routePath ?? null;
       const resultData = data?.data ?? {};
@@ -750,7 +753,7 @@ export default function App() {
 
   const handleSend = useCallback(async (rawText?: string) => {
     const text = (rawText ?? input).trim();
-    if (!text || sending) return;
+    if (!text || (sending && !resultReceivedRef.current)) return;
 
     // v4.4.13 新增：场景创建表单语音提交拦截
     // 当最近一条 AI 便利贴是场景创建表单（routePath=/scene/create）且用户说"保存"/"提交"等关键词时，
@@ -826,6 +829,7 @@ export default function App() {
     const aiMsgId = `${AI_MSG_ID_PREFIX}${Date.now()}`;
     // 重置多意图 result 计数器（v3.6.0 多意图支持：本次发送收到的首个 result 更新现有消息，后续 result 创建新便利贴）
     resultCountRef.current = 0;
+    resultReceivedRef.current = false;
     streamingMsgIdRef.current = aiMsgId;
     setMessages(prev => [...prev, {
       id: aiMsgId,
@@ -1205,20 +1209,31 @@ export default function App() {
                       : '输入消息，Enter 发送，Shift+Enter 换行'
                   }
                   rows={1}
-                  disabled={sending || confirmPending || permissionDialog !== null}
+                  disabled={sending && !resultReceivedRef.current || confirmPending || permissionDialog !== null}
                   className="flex-1 resize-none bg-transparent text-sm text-slate-100 placeholder-slate-500 outline-none max-h-32 disabled:opacity-60"
                   style={{ minHeight: '24px' }}
                 />
-                <button
-                  onClick={() => handleSend()}
-                  disabled={sending || confirmPending || permissionDialog !== null || !input.trim()}
-                  className={`shimmer-btn rounded-xl bg-gradient-to-br from-neon-purple to-neon-purple p-2 text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0 ${
-                    !sending && input.trim() ? 'shadow-neon-purple animate-glow hover:shadow-glow-md' : ''
-                  }`}
-                  title="发送"
-                >
-                  {sending ? <RefreshCw size={16} className="animate-spin" /> : <Send size={16} />}
-                </button>
+                {/* 中断/发送按钮：sending 时显示为中断按钮，收到 result 后可输入新消息 */}
+                {sending && !resultReceivedRef.current ? (
+                  <button
+                    onClick={() => abortSseRef.current()}
+                    className="shrink-0 rounded-xl bg-gradient-to-br from-red-500 to-red-600 p-2 text-white transition-all shadow-lg shadow-red-500/20 hover:shadow-red-500/40"
+                    title="中断当前操作"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleSend()}
+                    disabled={confirmPending || permissionDialog !== null || !input.trim()}
+                    className={`shimmer-btn rounded-xl bg-gradient-to-br from-neon-purple to-neon-purple p-2 text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0 ${
+                      input.trim() ? 'shadow-neon-purple animate-glow hover:shadow-glow-md' : ''
+                    }`}
+                    title="发送"
+                  >
+                    <Send size={16} />
+                  </button>
+                )}
               </div>
             </div>
           </div>

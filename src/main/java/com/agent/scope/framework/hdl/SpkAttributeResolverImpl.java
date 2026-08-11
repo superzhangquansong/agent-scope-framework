@@ -4,8 +4,11 @@ import com.agent.scope.framework.hdl.port.SpkAttributeResolver;
 import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONArray;
 import com.alibaba.fastjson2.JSONObject;
+import com.alibaba.nacos.api.config.ConfigService;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
@@ -36,6 +39,13 @@ public class SpkAttributeResolverImpl implements SpkAttributeResolver {
     /** schema 配置文件在 classpath 中的路径 */
     private static final String SCHEMAS_PATH = "config/resources/spk-schemas.json";
 
+    /** Nacos 中 spk-schemas 的 Data ID */
+    private static final String NACOS_DATA_ID = "spk-schemas.json";
+
+    /** Nacos 分组 */
+    @Value("${spring.cloud.nacos.config.group:SCOPE_GROUP}")
+    private String nacosGroup;
+
     /** 匹配整数或小数的正则 */
     private static final Pattern NUMBER_PATTERN = Pattern.compile("(\\d+(?:\\.\\d+)?)");
 
@@ -51,24 +61,68 @@ public class SpkAttributeResolverImpl implements SpkAttributeResolver {
     /** 颜色预设表（中文颜色名 -> "R,G,B"） */
     private JSONObject colorPresets;
 
+    /** Nacos 配置服务（可选，不可用时降级到 classpath） */
+    @Autowired(required = false)
+    private ConfigService configService;
+
     /**
      * 加载并解析 spk-schemas.json。
+     * <p>优先从 Nacos 配置中心加载（Data ID: spk-schemas.json），
+     * Nacos 不可用或无此配置时降级到 classpath 本地文件。</p>
      * 在 Bean 初始化后自动调用。
      */
     @PostConstruct
     public void loadSchemas() {
-        try (InputStream is = new ClassPathResource(SCHEMAS_PATH).getInputStream()) {
-            String content = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+        String content = loadFromNacos();
+        if (content != null) {
+            log.info("SPK schema 从 Nacos 加载成功, dataId={}, group={}", NACOS_DATA_ID, nacosGroup);
+        } else {
+            content = loadFromClasspath();
+            log.info("SPK schema 从 classpath 加载: path={}", SCHEMAS_PATH);
+        }
+
+        if (content == null || content.isBlank()) {
+            log.error("无法加载 spk-schemas.json（Nacos 和 classpath 均不可用）");
+            this.schemas = new JSONObject();
+            this.fallbackSchema = new JSONObject();
+            this.colorPresets = new JSONObject();
+            return;
+        }
+
+        try {
             JSONObject root = JSON.parseObject(content);
             this.schemas = root.getJSONObject("schemas");
             this.fallbackSchema = root.getJSONObject("_fallback");
             this.colorPresets = root.getJSONObject("_color_presets");
-            log.info("SPK schema 加载完成，schema 数量: {}", schemas != null ? schemas.size() : 0);
+            log.info("SPK schema 解析完成，schema 数量: {}", schemas != null ? schemas.size() : 0);
         } catch (Exception e) {
-            log.error("加载 spk-schemas.json 失败: {}", e.getMessage(), e);
+            log.error("解析 spk-schemas.json 失败: {}", e.getMessage(), e);
             this.schemas = new JSONObject();
             this.fallbackSchema = new JSONObject();
             this.colorPresets = new JSONObject();
+        }
+    }
+
+    /** 从 Nacos 加载配置 */
+    private String loadFromNacos() {
+        if (configService == null) {
+            return null;
+        }
+        try {
+            return configService.getConfig(NACOS_DATA_ID, nacosGroup, 3000);
+        } catch (Exception e) {
+            log.warn("从 Nacos 加载 spk-schemas 失败: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /** 从 classpath 加载配置 */
+    private String loadFromClasspath() {
+        try (InputStream is = new ClassPathResource(SCHEMAS_PATH).getInputStream()) {
+            return new String(is.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            log.error("从 classpath 加载 spk-schemas.json 失败: {}", e.getMessage(), e);
+            return null;
         }
     }
 
