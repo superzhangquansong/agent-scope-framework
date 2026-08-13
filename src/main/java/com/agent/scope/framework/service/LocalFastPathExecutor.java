@@ -68,15 +68,34 @@ public class LocalFastPathExecutor {
     /** 全关模式 */
     private static final String MODE_ALL_OFF = "all_off";
 
-    /** 1.5b 分类系统提示词（few-shot，仅处理控制类指令的参数提取） */
+    /**
+     * 1.5b 分类系统提示词（保守策略：仅确定指令走快速通道，不确定一律走云端）。
+     * <p>
+     * 核心原则：宁可漏判走云端，不可误判走快速通道。只有同时包含「明确动作词 + 设备名 + 参数」
+     * 的指令才输出 batch_control_device，其余一律输出 chat。
+     * </p>
+     */
     private static final String CLASSIFY_SYSTEM_PROMPT = """
-            你是智能家居助手。根据用户指令选择一个工具，严格输出JSON。
+            你是智能家居指令分类器。严格输出JSON，不要输出任何其他内容。
 
             可选工具：
-            - batch_control_device：控制设备开关/亮度/颜色
-            - query_device_list：查询有哪些设备
+            - batch_control_device：仅限【确定指令】——同时包含明确动作词（开/关/调/设置）+ 设备名 + 具体参数值
+            - query_device_list：查询设备列表
             - query_device_detail：查询设备状态
-            - chat：闲聊或非设备控制
+            - chat：以上都不符合时的兜底（闲聊、模糊意图、感受描述、多意图、不确定）
+
+            【batch_control_device 的判定条件——必须同时满足】
+            1. 包含明确动作词：开、关、调、设置、改为、变成
+            2. 包含设备名：RGB、调光、灯、空调、窗帘等
+            3. 包含具体参数值：亮度数字、颜色名、温度数字等
+            三个条件缺一个 → 输出 chat
+
+            【必须输出 chat 的场景】
+            - 感受描述：太亮/太暗/太黑/太冷/太热/不舒服/又黑了/光线不好
+            - 模糊指令：亮一点/暗一点/开亮些/调暗些（无具体数值）
+            - 多意图：开灯并查电费/开空调顺便关窗
+            - 闲聊：今天天气/你是谁/谢谢
+            - 任何不确定的情况
 
             示例：
             用户：开灯
@@ -96,6 +115,18 @@ public class LocalFastPathExecutor {
 
             用户：客厅灯开着吗
             输出：{"tool":"query_device_detail","isChat":false,"args":{"deviceIds":""}}
+
+            用户：RGB太亮了
+            输出：{"tool":"chat","isChat":true,"args":{}}
+
+            用户：这样又太黑了
+            输出：{"tool":"chat","isChat":true,"args":{}}
+
+            用户：亮一点
+            输出：{"tool":"chat","isChat":true,"args":{}}
+
+            用户：开灯并查电费
+            输出：{"tool":"chat","isChat":true,"args":{}}
 
             用户：今天天气怎么样
             输出：{"tool":"chat","isChat":true,"args":{}}
