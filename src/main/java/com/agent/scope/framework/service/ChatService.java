@@ -16,6 +16,7 @@ import com.agent.scope.framework.exception.PermissionException;
 import com.agent.scope.framework.handler.AgentEventHandlerRegistry;
 import com.agent.scope.framework.handler.EventContext;
 import com.agent.scope.framework.hdl.ImageInfo;
+import com.agent.scope.framework.vo.ToolResultVO;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.agentscope.core.ReActAgent;
 import io.agentscope.core.agent.RuntimeContext;
@@ -103,6 +104,13 @@ public class ChatService {
     private final AgentEventHandlerRegistry agentEventHandlerRegistry;
     private final PendingConfirmationService pendingConfirmationService;
     private final RedisRateLimiterService redisRateLimiterService;
+
+    /**
+     * 本地快速通道执行器（1.5b 分类 → Java 调工具 → 1.5b 汇总）。
+     * <p>单意图设备控制走本地 qwen2.5:1.5b，0 云端 token，~500ms 响应。
+     * 未命中设备控制时返回 null，自动回退云端 HarnessAgent ReAct。</p>
+     */
+    private final LocalFastPathExecutor localFastPathExecutor;
 
     /**
      * AgentStateStore（可选注入，用于清除残留的 ASKING 状态）。
@@ -724,9 +732,21 @@ public class ChatService {
             // 与当前配置一致，enabled=false 时清除 ASK 规则使所有工具直接放行
             syncPermissionContext(userId, sessionId);
 
+            // ===== 本地快速通道：1.5b 分类 → Java 调工具 → 1.5b 汇总（0 云端 token） =====
+            // 命中设备控制 → 直接返回结果，不走云端 ReAct
+            // 未命中（闲聊/多意图/分类失败）→ 返回 null，回退云端 HarnessAgent
+            LocalFastPathExecutor.FastPathResult fastResult =
+                    localFastPathExecutor.tryExecute(dto.getUserMessage(), ctx);
+            if (fastResult != null) {
+                handleFastPathResult(emitter, sessionId, userId, houseId, fastResult);
+                return;
+            }
+
+            // ===== 云端 HarnessAgent ReAct（现有逻辑，处理复杂对话/多意图/记忆等） =====
             // 构建 Agent 消息：检测是否有待确认的权限请求（HITL ASKING 状态）
             Msg agentMessage = buildAgentMessageWithPermissionCheck(dto, sessionId);
 
+            String selectedModelName = agentScopeProperties.getModelName();
             // 委托 HarnessAgent 执行 ReAct 推理循环
             Disposable subscription = harnessAgent.streamEvents(agentMessage, runtimeContext)
                     .doOnNext(event -> {
@@ -744,13 +764,14 @@ public class ChatService {
                         long totalDurationMs = System.currentTimeMillis() - recorder.sessionStartTime;
 
                         // 保存对话记录与 Token 用量（无论是否被中断，都需落库部分结果）
+                        // 模型名使用意图路由实际选中的模型（Ollama / 云端），而非硬编码全局模型名
                         if (recorder.finalReplyContent.length() > 0) {
                             chatRecordService.saveAssistantMessage(sessionId, userId, recorder.finalReplyContent.toString());
                         }
                         chatRecordService.saveTokenUsage(sessionId,
                                 recorder.totalInputTokens.get(),
                                 recorder.totalOutputTokens.get(),
-                                agentScopeProperties.getModelName());
+                                selectedModelName);
 
                         // 中断后框架优雅完成场景：emitter 已在 interruptSession 中关闭，跳过 SSE 发送
                         boolean wasInterrupted = interruptedSessions.remove(sessionId);
@@ -1146,6 +1167,61 @@ public class ChatService {
 
         log.debug("[SSE] 转发Agent事件: sessionId={}, eventType={}",
                 sessionId, event.getClass().getSimpleName());
+    }
+
+    // ==================== 快速通道结果处理 ====================
+
+    /**
+     * 处理本地快速通道结果，发送 SSE 事件并保存记录。
+     * <p>
+     * 快速通道命中设备控制后，不走 AgentScope ReAct 链路，
+     * 直接将 1.5b 生成的回复和工具结果通过 SSE 推送给前端。
+     * </p>
+     *
+     * @param emitter    SSE 发射器
+     * @param sessionId  会话 ID
+     * @param userId     用户 ID
+     * @param houseId    房屋 ID
+     * @param fastResult 快速通道执行结果
+     */
+    private void handleFastPathResult(SseEmitter emitter, String sessionId, String userId,
+                                      String houseId, LocalFastPathExecutor.FastPathResult fastResult) {
+        ToolResultVO toolResult = fastResult.toolResult();
+        String reply = fastResult.reply();
+
+        try {
+            // 1. 发送 result 事件（与云端 ToolResultEndHandler.forwardStructuredResult 格式一致）
+            //    前端按 routePath 路由渲染结构化数据（设备列表/控制结果等）
+            if (toolResult.getRoutePath() != null && !toolResult.getRoutePath().isBlank()) {
+                Map<String, Object> resultEvent = new LinkedHashMap<>();
+                resultEvent.put("type", "result");
+                resultEvent.put("sessionId", sessionId);
+                resultEvent.put("routePath", toolResult.getRoutePath());
+                resultEvent.put("data", toolResult.getData() != null ? toolResult.getData() : new LinkedHashMap<>());
+                resultEvent.put("message", toolResult.getMessage() != null ? toolResult.getMessage() : "");
+                emitter.send(SseEmitter.event().name("result").data(OBJECT_MAPPER.writeValueAsString(resultEvent)));
+                log.info("[Chat] 快速通道发送 result 事件: routePath={}", toolResult.getRoutePath());
+            }
+
+            // 2. 发送 agent_end 事件（携带回复文本，前端朗读/显示）
+            Map<String, Object> fields = new LinkedHashMap<>();
+            fields.put("reply", reply);
+            fields.put("broadcastText", toolResult.getBroadcastText() != null
+                    ? toolResult.getBroadcastText() : reply);
+            fields.put("fastPath", true);
+            sendEvent(emitter, SSE_EVENT_AGENT_END, sessionId, fields);
+        } catch (IOException e) {
+            log.warn("[Chat] 快速通道发送 SSE 事件失败: {}", e.getMessage());
+        }
+
+        // 异步保存对话记录
+        chatRecordService.saveAssistantMessage(sessionId, userId, reply);
+        chatRecordService.saveTokenUsage(sessionId, 0, 0, "qwen2.5:1.5b");
+
+        sendDone(emitter);
+        safeComplete(emitter);
+
+        log.info("[Chat] 快速通道完成: sessionId={}, routePath={}", sessionId, toolResult.getRoutePath());
     }
 
     // ==================== SSE 事件发送工具方法 ====================

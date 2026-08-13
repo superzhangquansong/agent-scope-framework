@@ -120,13 +120,47 @@ scope:
       parallel-tool-calls: true
       vision-enabled: true
 
-    # Ollama（本地模型）配置
+    # Ollama（本地模型）配置 — 用于本地快速通道（1.5b 分类 + 汇总，0 云端 token）
     ollama:
       base-url: http://127.0.0.1:11434
       chat-model: qwen2.5:1.5b
       temperature: 0.3
       num-ctx: 32768
       num-predict: 2048
+
+    # 本地快速通道配置（关键词预匹配 + 1.5b 兜底）
+    # 关键词命中的意图 0 LLM 调用直接执行，未命中走 1.5b 分类
+    fast-path:
+      enabled: true
+      keywords:
+        # 查询设备列表：明确查询意图，0 LLM
+        query_device_list:
+          - 有哪些设备
+          - 设备列表
+          - 设备清单
+          - 什么设备
+          - 列出设备
+          - 查看设备
+          - 设备有哪些
+        # 查询设备详情：状态查询，0 LLM
+        query_device_detail:
+          - 设备状态
+          - 开着吗
+          - 什么状态
+          - 状态详情
+          - 关着吗
+        # 全开模式：batch_control_device:mode 语法，0 LLM
+        batch_control_device:all_on:
+          - 全开
+          - 打开所有
+          - 全部打开
+          - 所有设备打开
+        # 全关模式：0 LLM
+        batch_control_device:all_off:
+          - 全关
+          - 关闭所有
+          - 全部关闭
+          - 所有设备关闭
 
     # HDL 云端 API 配置
     hdl-api:

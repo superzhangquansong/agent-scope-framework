@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -65,6 +66,9 @@ public class AgentScopeProperties {
 
     /** Ollama 模型配置 */
     private Ollama ollama = new Ollama();
+
+    /** 本地快速通道配置（关键词预匹配 + 1.5b 兜底） */
+    private FastPath fastPath = new FastPath();
 
     /** Memory 配置 */
     private Memory memory = new Memory();
@@ -169,6 +173,25 @@ public class AgentScopeProperties {
 
         /** 最大生成 token 数 */
         private int numPredict = 2048;
+    }
+
+    /**
+     * 本地快速通道配置。
+     * <p>
+     * 关键词预匹配优先（0 LLM 调用），未命中再走 1.5b 分类。
+     * 关键词从 Nacos 热加载，新增工具只需加配置无需改代码。
+     * </p>
+     */
+    @Data
+    public static class FastPath {
+        /** 是否启用快速通道 */
+        private boolean enabled = true;
+
+        /**
+         * 关键词匹配规则：工具名 → 关键词列表。
+         * <p>用户输入包含任一关键词即命中该工具，跳过 1.5b 分类。</p>
+         */
+        private Map<String, List<String>> keywords = new LinkedHashMap<>();
     }
 
     /**
