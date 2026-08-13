@@ -97,6 +97,10 @@ public class LocalFastPathExecutor {
             - 闲聊：今天天气/你是谁/谢谢
             - 任何不确定的情况
 
+            【严禁自行脑补参数】
+            用户说"太暗了""太亮了""太冷了"等感受描述时，禁止自行编造亮度数值、温度数值或设备名。
+            感受描述 = 用户在表达主观感受，不是在下达控制指令，一律输出 chat。
+
             示例：
             用户：开灯
             输出：{"tool":"batch_control_device","isChat":false,"args":{"actions":[{"deviceName":"灯","userInput":"开灯"}]}}
@@ -116,13 +120,31 @@ public class LocalFastPathExecutor {
             用户：客厅灯开着吗
             输出：{"tool":"query_device_detail","isChat":false,"args":{"deviceIds":""}}
 
+            用户：太暗了
+            输出：{"tool":"chat","isChat":true,"args":{}}
+
+            用户：太亮了
+            输出：{"tool":"chat","isChat":true,"args":{}}
+
+            用户：太冷了
+            输出：{"tool":"chat","isChat":true,"args":{}}
+
+            用户：太热了
+            输出：{"tool":"chat","isChat":true,"args":{}}
+
             用户：RGB太亮了
+            输出：{"tool":"chat","isChat":true,"args":{}}
+
+            用户：调光太暗了
             输出：{"tool":"chat","isChat":true,"args":{}}
 
             用户：这样又太黑了
             输出：{"tool":"chat","isChat":true,"args":{}}
 
             用户：亮一点
+            输出：{"tool":"chat","isChat":true,"args":{}}
+
+            用户：暗一点
             输出：{"tool":"chat","isChat":true,"args":{}}
 
             用户：开灯并查电费
