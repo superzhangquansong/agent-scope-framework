@@ -101,6 +101,15 @@ public class LocalFastPathExecutor {
             用户说"太暗了""太亮了""太冷了"等感受描述时，禁止自行编造亮度数值、温度数值或设备名。
             感受描述 = 用户在表达主观感受，不是在下达控制指令，一律输出 chat。
 
+            【复杂口语指令一律输出 chat】
+            以下特征说明用户在用自然口语表达，指令不连贯或含转折，1.5b 无法准确解析参数，必须输出 chat：
+            - 含转折/纠正词：不对、不是、算了吧、改一下、说错了
+            - 多个"然后"串联的长句（3个以上动作）
+            - 口语化填充词：帮我把、那个、就是、嗯、呃
+            - 句子不连贯、语义跳跃、中途改主意
+            - 百分比/分数等非直接数值（百分之三十 → 需换算）
+            batch_control_device 只处理简洁明确的指令（如"RGB开蓝色亮度65"），不处理口语长句。
+
             示例：
             用户：开灯
             输出：{"tool":"batch_control_device","isChat":false,"args":{"actions":[{"deviceName":"灯","userInput":"开灯"}]}}
@@ -145,6 +154,21 @@ public class LocalFastPathExecutor {
             输出：{"tool":"chat","isChat":true,"args":{}}
 
             用户：暗一点
+            输出：{"tool":"chat","isChat":true,"args":{}}
+
+            用户：帮我把rgb灯打开然后颜色调成为蓝色然后不对绿色然后亮度调整为百分之三十
+            输出：{"tool":"chat","isChat":true,"args":{}}
+
+            用户：帮我开一下那个客厅的灯就是那个大灯
+            输出：{"tool":"chat","isChat":true,"args":{}}
+
+            用户：把空调温度调到嗯二十六度吧不对二十四度
+            输出：{"tool":"chat","isChat":true,"args":{}}
+
+            用户：先开灯然后开空调然后关窗帘然后调温度
+            输出：{"tool":"chat","isChat":true,"args":{}}
+
+            用户：rgb灯调成蓝色吧算了还是绿色吧
             输出：{"tool":"chat","isChat":true,"args":{}}
 
             用户：开灯并查电费

@@ -86,8 +86,8 @@
       "attributes": [
         {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "打开", "关闭"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
         {"key": "mode", "desc": "模式", "type": "enum", "access": "WR", "aliases": ["模式", "制冷", "制热", "送风", "自动", "除湿", "睡眠"], "enumerations": [{"value": "cool", "desc": "制冷"}, {"value": "heat", "desc": "制热"}, {"value": "fan", "desc": "送风"}, {"value": "auto", "desc": "自动"}, {"value": "dry", "desc": "除湿"}, {"value": "sleep", "desc": "睡眠"}, {"value": "c_1", "desc": "自定义1"}, {"value": "c_2", "desc": "自定义2"}, {"value": "c_3", "desc": "自定义3"}]},
-        {"key": "fan_speed", "desc": "风速", "type": "enum", "access": "WR", "aliases": ["风速", "风量", "风力", "高档", "中档", "低档", "自动档", "更低", "更高"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "medium", "desc": "中"}, {"value": "low", "desc": "低"}, {"value": "auto", "desc": "自动"}, {"value": "lower", "desc": "更低"}, {"value": "higher", "desc": "更高"}, {"value": "c_1", "desc": "自定义1"}, {"value": "c_2", "desc": "自定义2"}, {"value": "c_3", "desc": "自定义3"}]},
-        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 16, "max": 32, "step": 1, "aliases": ["温度", "设定温度", "调到", "设为"]},
+        {"key": "fan", "desc": "风速", "type": "enum", "access": "WR", "aliases": ["风速", "风量", "风力", "高档", "中档", "低档", "自动档", "更低", "更高", "调高", "调低", "加大", "减小"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "medium", "desc": "中"}, {"value": "low", "desc": "低"}, {"value": "auto", "desc": "自动"}, {"value": "lower", "desc": "更低"}, {"value": "higher", "desc": "更高"}, {"value": "c_1", "desc": "自定义1"}, {"value": "c_2", "desc": "自定义2"}, {"value": "c_3", "desc": "自定义3"}]},
+        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 16, "max": 32, "step": 1, "aliases": ["温度", "设定温度", "调到", "设为", "度"]},
         {"key": "current_temp", "desc": "当前温度", "type": "number", "access": "R", "unit": "℃", "aliases": ["当前温度", "室温"]}
       ]
     },
@@ -99,7 +99,7 @@
         {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
         {"key": "mode", "desc": "模式", "type": "enum", "access": "WR", "aliases": ["模式", "制冷", "制热"], "enumerations": [{"value": "cool", "desc": "制冷"}, {"value": "heat", "desc": "制热"}, {"value": "fan", "desc": "送风"}, {"value": "auto", "desc": "自动"}]},
         {"key": "fan_speed", "desc": "风速", "type": "enum", "access": "WR", "aliases": ["风速", "风量"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "medium", "desc": "中"}, {"value": "low", "desc": "低"}, {"value": "auto", "desc": "自动"}]},
-        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 16, "max": 32, "step": 1, "aliases": ["温度", "设定温度"]}
+        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 16, "max": 32, "step": 1, "aliases": ["温度", "设定温度", "调到", "设为", "度"]}
       ]
     },
 
@@ -119,7 +119,7 @@
       "aliases": ["地热", "地暖", "地板采暖"],
       "attributes": [
         {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
-        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 5, "max": 45, "step": 1, "aliases": ["温度", "设定温度"]}
+        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 5, "max": 45, "step": 1, "aliases": ["温度", "设定温度", "调到", "设为", "度"]}
       ]
     },
 
@@ -240,7 +240,7 @@
         {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
         {"key": "mode", "desc": "模式", "type": "enum", "access": "WR", "aliases": ["模式", "制冷", "制热", "送风", "自动", "除湿"], "enumerations": [{"value": "cool", "desc": "制冷"}, {"value": "heat", "desc": "制热"}, {"value": "fan", "desc": "送风"}, {"value": "auto", "desc": "自动"}, {"value": "dry", "desc": "除湿"}]},
         {"key": "fan", "desc": "风速", "type": "enum", "access": "WR", "aliases": ["风速", "风量", "高档", "中档", "低档"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "medium", "desc": "中"}, {"value": "low", "desc": "低"}, {"value": "auto", "desc": "自动"}]},
-        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 0, "max": 30, "step": 1, "aliases": ["温度", "设定温度"]}
+        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 0, "max": 30, "step": 1, "aliases": ["温度", "设定温度", "调到", "设为", "度"]}
       ]
     },
 
@@ -431,7 +431,7 @@
       "aliases": ["毛细管空调", "毛细管", "毛细管网"],
       "attributes": [
         {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
-        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 16, "max": 32, "step": 1, "aliases": ["温度", "设定温度"]}
+        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 16, "max": 32, "step": 1, "aliases": ["温度", "设定温度", "调到", "设为", "度"]}
       ]
     },
 
@@ -441,7 +441,7 @@
       "attributes": [
         {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
         {"key": "mode", "desc": "模式", "type": "enum", "access": "WR", "aliases": ["模式"], "enumerations": [{"value": "heat", "desc": "制热"}, {"value": "cool", "desc": "制冷"}]},
-        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 5, "max": 75, "step": 1, "aliases": ["温度"]}
+        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 5, "max": 75, "step": 1, "aliases": ["温度", "调到", "设为", "度"]}
       ]
     },
 
@@ -450,7 +450,7 @@
       "aliases": ["恒温器", "德业恒温器"],
       "attributes": [
         {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
-        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 5, "max": 60, "step": 1, "aliases": ["温度"]}
+        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 5, "max": 60, "step": 1, "aliases": ["温度", "调到", "设为", "度"]}
       ]
     },
 
@@ -461,7 +461,7 @@
         {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
         {"key": "mode", "desc": "模式", "type": "enum", "access": "WR", "aliases": ["模式", "制冷", "制热"], "enumerations": [{"value": "cool", "desc": "制冷"}, {"value": "heat", "desc": "制热"}]},
         {"key": "fan_speed", "desc": "风速", "type": "enum", "access": "WR", "aliases": ["风速"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "medium", "desc": "中"}, {"value": "low", "desc": "低"}]},
-        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 16, "max": 32, "step": 1, "aliases": ["温度"]}
+        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 16, "max": 32, "step": 1, "aliases": ["温度", "调到", "设为", "度"]}
       ]
     },
 
@@ -582,7 +582,7 @@
       "attributes": [
         {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
         {"key": "mode", "desc": "模式", "type": "enum", "access": "WR", "aliases": ["模式", "制冷", "制热"], "enumerations": [{"value": "cool", "desc": "制冷"}, {"value": "heat", "desc": "制热"}]},
-        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 16, "max": 32, "step": 1, "aliases": ["温度"]}
+        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 16, "max": 32, "step": 1, "aliases": ["温度", "调到", "设为", "度"]}
       ]
     },
 
@@ -749,7 +749,7 @@
       "name": "环境传感器",
       "aliases": ["环境传感器", "环境", "多合一环境"],
       "attributes": [
-        {"key": "temperature", "desc": "温度", "type": "number", "access": "R", "unit": "℃", "aliases": ["温度"]},
+        {"key": "temperature", "desc": "温度", "type": "number", "access": "R", "unit": "℃", "aliases": ["温度", "调到", "设为", "度"]},
         {"key": "humidity", "desc": "湿度", "type": "number", "access": "R", "unit": "%", "aliases": ["湿度"]},
         {"key": "pm25", "desc": "PM2.5", "type": "number", "access": "R", "unit": "μg/m³", "aliases": ["PM2.5"]},
         {"key": "co2", "desc": "二氧化碳", "type": "number", "access": "R", "unit": "ppm", "aliases": ["二氧化碳", "CO2"]},
@@ -765,7 +765,7 @@
       "aliases": ["多合一存在", "多合一传感器"],
       "attributes": [
         {"key": "pir", "desc": "有人/无人", "type": "enum", "access": "R", "aliases": ["有人", "无人"], "enumerations": [{"value": "on", "desc": "有人"}, {"value": "off", "desc": "无人"}]},
-        {"key": "temperature", "desc": "温度", "type": "number", "access": "R", "unit": "℃", "aliases": ["温度"]},
+        {"key": "temperature", "desc": "温度", "type": "number", "access": "R", "unit": "℃", "aliases": ["温度", "调到", "设为", "度"]},
         {"key": "humidity", "desc": "湿度", "type": "number", "access": "R", "unit": "%", "aliases": ["湿度"]},
         {"key": "illuminance", "desc": "照度", "type": "number", "access": "R", "unit": "lux", "aliases": ["照度"]},
         {"key": "enable", "desc": "使能", "type": "enum", "access": "WR", "aliases": ["使能", "启用", "禁用"], "enumerations": [{"value": "true", "desc": "启用"}, {"value": "false", "desc": "禁用"}]},
@@ -1027,7 +1027,7 @@
       "aliases": ["热水器", "金茂热水器"],
       "attributes": [
         {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
-        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 30, "max": 75, "step": 1, "aliases": ["温度", "设定温度"]}
+        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 30, "max": 75, "step": 1, "aliases": ["温度", "设定温度", "调到", "设为", "度"]}
       ]
     },
 
@@ -1102,7 +1102,7 @@
       "aliases": ["室外环境", "环境数据"],
       "attributes": [
         {"key": "pm25", "desc": "PM2.5", "type": "number", "access": "R", "unit": "μg/m³", "aliases": ["PM2.5"]},
-        {"key": "temperature", "desc": "温度", "type": "number", "access": "R", "unit": "℃", "aliases": ["温度"]},
+        {"key": "temperature", "desc": "温度", "type": "number", "access": "R", "unit": "℃", "aliases": ["温度", "调到", "设为", "度"]},
         {"key": "humidity", "desc": "湿度", "type": "number", "access": "R", "unit": "%", "aliases": ["湿度"]},
         {"key": "weather", "desc": "天气", "type": "string", "access": "R", "aliases": ["天气"]}
       ]
@@ -1167,7 +1167,7 @@
       "attributes": [
         {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "打开", "关闭"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
         {"key": "mode", "desc": "模式", "type": "enum", "access": "WR", "aliases": ["模式", "手动", "编程"], "enumerations": [{"value": "manual", "desc": "手动"}, {"value": "program", "desc": "编程"}]},
-        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 5, "max": 45, "step": 1, "aliases": ["温度", "设定温度"]},
+        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 5, "max": 45, "step": 1, "aliases": ["温度", "设定温度", "调到", "设为", "度"]},
         {"key": "room_temp", "desc": "室温", "type": "number", "access": "R", "unit": "℃", "aliases": ["室温", "当前温度"]}
       ]
     },
@@ -1377,7 +1377,7 @@
       "attributes": [
         {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "打开", "关闭"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
         {"key": "mode", "desc": "模式", "type": "enum", "access": "WR", "aliases": ["模式", "制冷", "制热"], "enumerations": [{"value": "cool", "desc": "制冷"}, {"value": "heat", "desc": "制热"}]},
-        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 0, "max": 30, "step": 1, "aliases": ["温度", "设定温度"]},
+        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 0, "max": 30, "step": 1, "aliases": ["温度", "设定温度", "调到", "设为", "度"]},
         {"key": "room_temp", "desc": "室温", "type": "number", "access": "R", "unit": "℃", "aliases": ["室温", "当前温度"]},
         {"key": "room_humidity", "desc": "室内湿度", "type": "number", "access": "R", "unit": "%", "aliases": ["室内湿度", "湿度"]},
         {"key": "group_id", "desc": "模块id", "type": "string", "access": "R", "aliases": ["模块id", "模块"]}
@@ -1642,5 +1642,18 @@
     "最小": "low",
     "自动": "auto",
     "自动档": "auto"
+  },
+
+  "_fuzzy_defaults": {
+    "_comment": "模糊感受类指令的默认值兜底。标准解析（关键词+数字/枚举）失败后，按关键词匹配返回默认值。number 类型值为比例(0-1)，根据属性 min/max 计算实际值；enum 类型值为枚举值字符串，需在属性 enumerations 中存在才生效。新增模糊场景只需在此添加配置，不改代码",
+    "number": {
+      "太暗": 0.8, "有点暗": 0.6, "暗": 0.7,
+      "太亮": 0.3, "有点亮": 0.4, "亮": 0.3,
+      "太冷": 0.7, "有点冷": 0.6, "太热": 0.4, "有点热": 0.5
+    },
+    "enum": {
+      "太冷": "heat", "有点冷": "heat", "冷": "heat",
+      "太热": "cool", "有点热": "cool", "热": "cool"
+    }
   }
 }

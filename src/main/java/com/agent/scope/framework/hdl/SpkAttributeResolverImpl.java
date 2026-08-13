@@ -61,6 +61,9 @@ public class SpkAttributeResolverImpl implements SpkAttributeResolver {
     /** 颜色预设表（中文颜色名 -> "R,G,B"） */
     private JSONObject colorPresets;
 
+    /** 模糊感受默认值配置（number/enum 两类，标准解析失败后兜底） */
+    private JSONObject fuzzyDefaults;
+
     /** Nacos 配置服务（可选，不可用时降级到 classpath） */
     @Autowired(required = false)
     private ConfigService configService;
@@ -86,6 +89,7 @@ public class SpkAttributeResolverImpl implements SpkAttributeResolver {
             this.schemas = new JSONObject();
             this.fallbackSchema = new JSONObject();
             this.colorPresets = new JSONObject();
+            this.fuzzyDefaults = new JSONObject();
             return;
         }
 
@@ -94,12 +98,14 @@ public class SpkAttributeResolverImpl implements SpkAttributeResolver {
             this.schemas = root.getJSONObject("schemas");
             this.fallbackSchema = root.getJSONObject("_fallback");
             this.colorPresets = root.getJSONObject("_color_presets");
+            this.fuzzyDefaults = root.getJSONObject("_fuzzy_defaults");
             log.info("SPK schema 解析完成，schema 数量: {}", schemas != null ? schemas.size() : 0);
         } catch (Exception e) {
             log.error("解析 spk-schemas.json 失败: {}", e.getMessage(), e);
             this.schemas = new JSONObject();
             this.fallbackSchema = new JSONObject();
             this.colorPresets = new JSONObject();
+            this.fuzzyDefaults = new JSONObject();
         }
     }
 
@@ -198,21 +204,91 @@ public class SpkAttributeResolverImpl implements SpkAttributeResolver {
         if (type == null) {
             return null;
         }
+        Object value = null;
         switch (type) {
             case "enum":
-                return resolveEnumAttribute(attr, userInput);
+                value = resolveEnumAttribute(attr, userInput);
+                break;
             case "number":
-                return resolveNumberAttribute(attr, userInput);
+                value = resolveNumberAttribute(attr, userInput);
+                break;
             case "color":
-                return resolveColorAttribute(attr, userInput, colorPresets);
+                value = resolveColorAttribute(attr, userInput, colorPresets);
+                break;
             case "bool":
-                return resolveBoolAttribute(attr, userInput);
+                value = resolveBoolAttribute(attr, userInput);
+                break;
             case "string":
-                return resolveStringAttribute(attr, userInput);
+                value = resolveStringAttribute(attr, userInput);
+                break;
             default:
                 log.debug("未知的属性类型: {}", type);
-                return null;
         }
+        // 标准解析失败，尝试模糊默认值兜底
+        if (value == null && fuzzyDefaults != null) {
+            value = resolveFuzzyDefault(attr, type, userInput);
+            if (value != null) {
+                log.debug("模糊兜底命中: spk attr key={}, type={}, userInput={}, value={}",
+                        attr.getString("key"), type, userInput, value);
+            }
+        }
+        return value;
+    }
+
+    /**
+     * 模糊感受默认值兜底解析。
+     * <p>
+     * 当标准关键词匹配失败时，检查 _fuzzy_defaults 中是否有匹配的模糊关键词：
+     * <ul>
+     *   <li>number 类型：配置值为比例(0-1)，根据属性 min/max 计算实际值</li>
+     *   <li>enum 类型：配置值为枚举值字符串，需在属性 enumerations 中存在才生效</li>
+     * </ul>
+     * 例如："太冷了" → set_temp(16-32) 比例0.7 → 27℃；mode 枚举 → "heat"(制热)
+     * </p>
+     *
+     * @param attr      属性定义
+     * @param type      属性类型
+     * @param userInput 用户输入
+     * @return 兜底默认值，未匹配返回 null
+     */
+    private Object resolveFuzzyDefault(JSONObject attr, String type, String userInput) {
+        JSONObject typeFuzzy = fuzzyDefaults.getJSONObject(type);
+        if (typeFuzzy == null) {
+            return null;
+        }
+        // 按关键词长度降序匹配，优先更具体的关键词（如"太冷"优先于"冷"）
+        List<String> keywords = new ArrayList<>(typeFuzzy.keySet());
+        keywords.removeIf(k -> k.startsWith("_"));
+        keywords.sort((a, b) -> b.length() - a.length());
+
+        for (String keyword : keywords) {
+            if (!userInput.contains(keyword)) {
+                continue;
+            }
+            Object fuzzyValue = typeFuzzy.get(keyword);
+            if ("number".equals(type) && fuzzyValue instanceof Number) {
+                // number 类型：比例值 → 根据 min/max 计算实际值
+                double ratio = ((Number) fuzzyValue).doubleValue();
+                Double min = attr.getDouble("min");
+                Double max = attr.getDouble("max");
+                if (min != null && max != null && max > min) {
+                    double v = min + (max - min) * ratio;
+                    return (v == Math.floor(v) && !Double.isInfinite(v)) ? (int) v : v;
+                }
+            } else if ("enum".equals(type) && fuzzyValue != null) {
+                // enum 类型：验证值在属性 enumerations 中存在
+                String enumValue = String.valueOf(fuzzyValue);
+                JSONArray enumerations = attr.getJSONArray("enumerations");
+                if (enumerations != null) {
+                    for (int i = 0; i < enumerations.size(); i++) {
+                        if (enumValue.equals(enumerations.getJSONObject(i).getString("value"))) {
+                            return enumValue;
+                        }
+                    }
+                }
+            }
+        }
+        return null;
     }
 
     /**
@@ -475,6 +551,11 @@ public class SpkAttributeResolverImpl implements SpkAttributeResolver {
             if (m.find()) {
                 return parseNumber(m.group(1));
             }
+        }
+        // 兜底：userInput 是纯数字（如 LLM 截断后的 "28"），直接提取
+        Matcher m = NUMBER_PATTERN.matcher(userInput);
+        if (m.find()) {
+            return parseNumber(m.group(1));
         }
         return null;
     }

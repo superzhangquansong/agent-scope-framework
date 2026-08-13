@@ -735,12 +735,12 @@ public class ChatService {
             // ===== 本地快速通道：1.5b 分类 → Java 调工具 → 1.5b 汇总（0 云端 token） =====
             // 命中设备控制 → 直接返回结果，不走云端 ReAct
             // 未命中（闲聊/多意图/分类失败）→ 返回 null，回退云端 HarnessAgent
-            LocalFastPathExecutor.FastPathResult fastResult =
+            /*LocalFastPathExecutor.FastPathResult fastResult =
                     localFastPathExecutor.tryExecute(dto.getUserMessage(), ctx);
             if (fastResult != null) {
                 handleFastPathResult(emitter, sessionId, userId, houseId, fastResult);
                 return;
-            }
+            }*/
 
             // ===== 云端 HarnessAgent ReAct（现有逻辑，处理复杂对话/多意图/记忆等） =====
             // 构建 Agent 消息：检测是否有待确认的权限请求（HITL ASKING 状态）

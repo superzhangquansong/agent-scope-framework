@@ -126,13 +126,13 @@ public class SceneTool extends AbstractTool {
      * @param runtimeContext 运行时上下文（自动注入）
      * @return 工具结果 VO
      */
-    @Tool(name = "create_scene",
-            description = "创建 HDL 场景。需先调用 query_device_list 获取设备 sid/spk/gatewayId，然后传入场景名和设备动作列表。"
-                    + "设备动作通过 userInput 字段描述（如'RGB开绿色亮度98'），工具内部自动解析为标准控制属性，无需 LLM 输出属性 key。"
-                    + "使用场景：用户说'创建一个回家场景 RGB 开绿色亮度 98'时调用。"
-                    + "参数来源要求：gatewayId、sid、spk 必须来自 query_device_list 返回结果。"
-                    + "禁止事项：禁止编造网关 ID、设备 sid 或种类码；禁止使用示例值。",
-            concurrencySafe = false)
+//    @Tool(name = "create_scene",
+//            description = "创建 HDL 场景。需先调用 query_device_list 获取设备 sid/spk/gatewayId，然后传入场景名和设备动作列表。"
+//                    + "设备动作通过 userInput 字段描述（如'RGB开绿色亮度98'），工具内部自动解析为标准控制属性，无需 LLM 输出属性 key。"
+//                    + "使用场景：用户说'创建一个回家场景 RGB 开绿色亮度 98'时调用。"
+//                    + "参数来源要求：gatewayId、sid、spk 必须来自 query_device_list 返回结果。"
+//                    + "禁止事项：禁止编造网关 ID、设备 sid 或种类码；禁止使用示例值。",
+//            concurrencySafe = false)
     public ToolResultVO createScene(
             @ToolParam(name = "sceneName", required = true,
                     description = "场景名称。示例：回家场景、晚安场景。从用户输入提取，通常是创建/新建之后、场景之前的文字") String sceneName,
