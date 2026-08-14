@@ -46,8 +46,26 @@ public class SpkAttributeResolverImpl implements SpkAttributeResolver {
     @Value("${spring.cloud.nacos.config.group:SCOPE_GROUP}")
     private String nacosGroup;
 
-    /** 匹配整数或小数的正则 */
-    private static final Pattern NUMBER_PATTERN = Pattern.compile("(\\d+(?:\\.\\d+)?)");
+    /** 匹配整数或小数的正则（支持英文点"."和中文点"点"，如 24.3 或 24点3） */
+    private static final Pattern NUMBER_PATTERN = Pattern.compile("(\\d+(?:[.点]\\d+)?)");
+
+    /** 匹配中文数字的正则（如"二十四""二十四点三""二十四点3""一百二十"） */
+    private static final Pattern CHINESE_NUMBER_PATTERN = Pattern.compile(
+            "[零〇一二三四五六七八九十百千万两壹贰叁肆伍陆柒捌玖拾佰仟]+(?:点[零〇一二三四五六七八九0-9]+)?");
+
+    /** 中文数字字符 → 阿拉伯数字映射表（支持大写和小写形式） */
+    private static final Map<Character, Integer> CHINESE_DIGIT_MAP = Map.ofEntries(
+            Map.entry('零', 0), Map.entry('〇', 0),
+            Map.entry('一', 1), Map.entry('壹', 1),
+            Map.entry('二', 2), Map.entry('贰', 2), Map.entry('两', 2),
+            Map.entry('三', 3), Map.entry('叁', 3),
+            Map.entry('四', 4), Map.entry('肆', 4),
+            Map.entry('五', 5), Map.entry('伍', 5),
+            Map.entry('六', 6), Map.entry('陆', 6),
+            Map.entry('七', 7), Map.entry('柒', 7),
+            Map.entry('八', 8), Map.entry('捌', 8),
+            Map.entry('九', 9), Map.entry('玖', 9)
+    );
 
     /** 匹配 "R,G,B" 格式颜色的正则 */
     private static final Pattern RGB_PATTERN = Pattern.compile("(\\d{1,3})\\s*,\\s*(\\d{1,3})\\s*,\\s*(\\d{1,3})");
@@ -705,23 +723,36 @@ public class SpkAttributeResolverImpl implements SpkAttributeResolver {
             if (idx < 0) {
                 continue;
             }
-            // 在别名之后查找数字（如 "亮度98"）
+            // 在别名之后查找数字（如 "亮度98" 或 "温度二十四"）
             int afterStart = idx + alias.length();
             int windowEnd = Math.min(userInput.length(), afterStart + 10);
             String after = userInput.substring(afterStart, windowEnd);
+            // 优先尝试中文数字（如"二十四点三"），避免阿拉伯数字正则误匹配其中的"3"
+            Number cnNum = tryExtractChineseNumber(after);
+            if (cnNum != null) {
+                return cnNum;
+            }
             Matcher m = NUMBER_PATTERN.matcher(after);
             if (m.find()) {
                 return parseNumber(m.group(1));
             }
-            // 在别名之前查找数字（如 "98亮度"）
+            // 在别名之前查找数字（如 "98亮度" 或 "二十四度"）
             int beforeStart = Math.max(0, idx - 10);
             String before = userInput.substring(beforeStart, idx);
+            cnNum = tryExtractChineseNumber(before);
+            if (cnNum != null) {
+                return cnNum;
+            }
             m = NUMBER_PATTERN.matcher(before);
             if (m.find()) {
                 return parseNumber(m.group(1));
             }
         }
-        // 兜底：userInput 是纯数字（如 LLM 截断后的 "28"），直接提取
+        // 兜底：userInput 是纯数字（如 LLM 截断后的 "28" 或 "二十四"），直接提取
+        Number cnNum = tryExtractChineseNumber(userInput);
+        if (cnNum != null) {
+            return cnNum;
+        }
         Matcher m = NUMBER_PATTERN.matcher(userInput);
         if (m.find()) {
             return parseNumber(m.group(1));
@@ -731,14 +762,117 @@ public class SpkAttributeResolverImpl implements SpkAttributeResolver {
 
     /**
      * 将数字字符串解析为 Integer 或 Double。
+     * 支持英文小数点"."和中文小数点"点"（如"24.3"或"24点3"）。
      *
      * @param numStr 数字字符串
      * @return Number 实例
      */
     private Number parseNumber(String numStr) {
+        // 中文"点"替换为英文小数点
+        numStr = numStr.replace("点", ".");
         if (numStr.contains(".")) {
             return Double.parseDouble(numStr);
         }
         return Integer.parseInt(numStr);
+    }
+
+    /**
+     * 尝试从文本中提取中文数字（如"二十四""二十四点三""二十四点3"）。
+     * <p>
+     * 支持中文数字（零一二三四五六七八九十百千万，含大写形式）和中文小数点"点"。
+     * 小数点后可跟中文数字或阿拉伯数字（如"二十四点三"或"二十四点3"）。
+     * </p>
+     *
+     * @param text 待解析文本
+     * @return 解析出的 Number，未匹配到中文数字返回 null
+     */
+    private Number tryExtractChineseNumber(String text) {
+        Matcher m = CHINESE_NUMBER_PATTERN.matcher(text);
+        if (!m.find()) {
+            return null;
+        }
+        return parseChineseNumber(m.group());
+    }
+
+    /**
+     * 将中文数字字符串解析为 Number。
+     * <p>
+     * 解析算法：遍历中文数字字符，遇到数字字符累加到 current，遇到单位字符（十/百/千/万）
+     * 将 current 乘以单位值加到 result。支持小数点"点"，小数部分逐位转换。
+     * </p>
+     * <p>示例："二十四"→24，"三十"→30，"十二"→12，"十"→10，"二十四点三"→24.3</p>
+     *
+     * @param str 中文数字字符串
+     * @return Number 实例（整数返回 Integer，小数返回 Double）
+     */
+    private Number parseChineseNumber(String str) {
+        // 分割整数部分和小数部分（以"点"为界）
+        int dotIdx = str.indexOf('点');
+        String intPart = dotIdx >= 0 ? str.substring(0, dotIdx) : str;
+        String decPart = dotIdx >= 0 ? str.substring(dotIdx + 1) : "";
+
+        long intVal = parseChineseInteger(intPart);
+
+        if (decPart.isEmpty()) {
+            return (int) intVal;
+        }
+
+        // 小数部分：逐字符转换（支持中文数字和阿拉伯数字）
+        double decVal = 0;
+        double factor = 0.1;
+        for (char c : decPart.toCharArray()) {
+            Integer digit = CHINESE_DIGIT_MAP.get(c);
+            if (digit == null) {
+                // 阿拉伯数字
+                if (c >= '0' && c <= '9') {
+                    digit = c - '0';
+                } else {
+                    break;
+                }
+            }
+            decVal += digit * factor;
+            factor *= 0.1;
+        }
+        return intVal + decVal;
+    }
+
+    /**
+     * 解析中文整数部分。
+     * <p>
+     * 算法：result 累加已完成的部分，current 累积当前数字字符。
+     * 遇到单位字符时将 current 乘以单位值加到 result，current 清零。
+     * 结束后返回 result + current。
+     * </p>
+     *
+     * @param str 中文整数字符串（如"二十四""三十""一百二十三"）
+     * @return 解析后的整数值
+     */
+    private long parseChineseInteger(String str) {
+        long result = 0;
+        long current = 0;
+        for (char c : str.toCharArray()) {
+            Integer digit = CHINESE_DIGIT_MAP.get(c);
+            if (digit != null) {
+                // 数字字符：累积到 current（如"二"→current=2，"四"→current=24）
+                current = current * 10 + digit;
+            } else if (c == '十' || c == '拾') {
+                if (current == 0) current = 1; // "十"单独出现视为 10
+                result += current * 10;
+                current = 0;
+            } else if (c == '百' || c == '佰') {
+                if (current == 0) current = 1;
+                result += current * 100;
+                current = 0;
+            } else if (c == '千' || c == '仟') {
+                if (current == 0) current = 1;
+                result += current * 1000;
+                current = 0;
+            } else if (c == '万') {
+                if (current == 0) current = 1;
+                result = (result + current) * 10000;
+                current = 0;
+            }
+        }
+        return result + current;
     }
 }
