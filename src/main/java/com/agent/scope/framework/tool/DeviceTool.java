@@ -131,12 +131,21 @@ public class DeviceTool extends AbstractTool {
                     + "设备名称优先匹配：用户输入中的设备关键词应优先匹配设备列表中名称包含该关键词的设备。"
                     + "多设备合并：用户输入可能没有逗号分隔符（如'调光开冷色亮度48RGB开红色亮度88'），"
                     + "这是多个设备控制指令连写，必须识别为多设备控制合并为一次 batch_control_device 调用，禁止拆分成多次调用。"
+                    + "【场景化指令处理】：当用户说'观影模式''会客模式''睡眠模式''浪漫模式'等场景词时，"
+                    + "必须为每个设备提供 attributes 参数（直接指定属性值），不能只传 userInput 场景词。"
+                    + "LLM 应根据场景语义自行推断每个设备的合理属性值，如观影模式→灯光亮度20%暖色+空调26度制冷。"
                     + "禁止事项：禁止编造设备 ID、网关 ID 或种类码；禁止使用示例值。",
             readOnly = true,
             concurrencySafe = false)
     public ToolResultVO batchControlDevice(
             @ToolParam(name = "actionsJson", required = false,
-                    description = "设备动作JSON数组字符串，格式：[{\"deviceId\":\"<query_device_list返回的deviceId>\",\"gatewayId\":\"<query_device_list返回的gatewayId>\",\"spk\":\"<query_device_list返回的spk>\",\"userInput\":\"用户对该设备的控制描述\",\"deviceName\":\"<query_device_list返回的设备名称>\"}]。全关/全开时留空，传mode参数。deviceId/gatewayId/spk/deviceName必须来自query_device_list返回结果") String actionsJson,
+                    description = "设备动作JSON数组字符串。"
+                    + "【直接控制指令】（如'开灯''亮度调到50'）：传 userInput，工具自动解析属性。"
+                    + "格式：[{\"deviceId\":\"<真实ID>\",\"gatewayId\":\"<真实ID>\",\"spk\":\"<真实spk>\",\"userInput\":\"开灯\",\"deviceName\":\"<真实名称>\"}]。"
+                    + "【场景化指令】（如'观影模式''睡眠模式'）：必须传 attributes，LLM 自行推断属性值。"
+                    + "格式：[{\"deviceId\":\"<真实ID>\",\"gatewayId\":\"<真实ID>\",\"spk\":\"light.rgbcw\",\"deviceName\":\"RGBCW灯\",\"attributes\":[{\"key\":\"on_off\",\"value\":\"on\"},{\"key\":\"brightness\",\"value\":20},{\"key\":\"cct\",\"value\":3000}]}]。"
+                    + "attributes 的 key 和 value 必须符合 spk 对应的物模型属性定义（可写属性）。"
+                    + "全关/全开时留空，传mode参数。deviceId/gatewayId/spk/deviceName必须来自query_device_list返回结果") String actionsJson,
             @ToolParam(name = "mode", required = false,
                     description = "全关/全开模式。'all_off'=全关所有设备，'all_on'=全开所有设备。设置后无需传actionsJson，工具内部自动查询并控制所有设备") String mode,
             RuntimeContext runtimeContext) {
@@ -168,6 +177,8 @@ public class DeviceTool extends AbstractTool {
             String spk = action.getString("spk");
             String userInput = action.getString("userInput");
             String deviceName = action.getString("deviceName");
+            // LLM 直传的属性列表（场景化指令时使用，绕过确定性解析器）
+            JSONArray directAttrs = action.getJSONArray("attributes");
 
             if (deviceId == null || deviceId.isBlank()) {
                 return ToolResultVO.failure(400, "第 " + (i + 1) + " 个 action 缺少 deviceId");
@@ -175,49 +186,68 @@ public class DeviceTool extends AbstractTool {
             if (spk == null || spk.isBlank()) {
                 return ToolResultVO.failure(400, "第 " + (i + 1) + " 个 action 缺少 spk");
             }
-            if (userInput == null || userInput.isBlank()) {
-                return ToolResultVO.failure(400, "第 " + (i + 1) + " 个 action 缺少 userInput");
-            }
-
-            // 确定性属性解析：spk + userInput → Map<String, Object>
-            Map<String, Object> attrMap = spkAttributeResolver.resolveAttributes(spk, userInput);
-            if (attrMap == null || attrMap.isEmpty()) {
-                // 无法解析属性的设备（如传感器）跳过，不中断整个批量操作
-                log.warn("[DeviceTool] 第 {} 个 action 属性解析为空，跳过: deviceId={}, spk={}, userInput={}",
-                        i + 1, deviceId, spk, userInput);
-                continue;
-            }
-
-            // RGB 与 colorful 互斥逻辑
-            applyColorfulMutex(attrMap, userInput);
 
             // 构建 HDL 期望的 attributes 格式：[{key, value}]
-            List<Map<String, Object>> attributes = new ArrayList<>(attrMap.size());
-            for (Map.Entry<String, Object> entry : attrMap.entrySet()) {
-                String attrKey = entry.getKey();
-                Object attrValue = entry.getValue();
+            List<Map<String, Object>> attributes;
 
-                // 检测相对调整标记（STEP_UP:{step} / STEP_DOWN:{step}）
-                // 查询设备当前值并加/减步长，实现"调高一点""调低一点"等相对调整
-                if (attrValue instanceof String strVal
-                        && (strVal.startsWith("STEP_UP:") || strVal.startsWith("STEP_DOWN:"))) {
-                    Object resolvedValue = resolveStepAdjustValue(deviceId, attrKey,
-                            strVal, sessionContext);
-                    if (resolvedValue != null) {
-                        attrValue = resolvedValue;
-                        log.info("[DeviceTool] 相对调整成功: deviceId={}, attrKey={}, marker={}, newValue={}",
-                                deviceId, attrKey, strVal, resolvedValue);
-                    } else {
-                        log.warn("[DeviceTool] 相对调整解析失败，跳过属性: deviceId={}, attrKey={}",
-                                deviceId, attrKey);
-                        continue;
-                    }
+            if (directAttrs != null && !directAttrs.isEmpty()) {
+                // 【场景化指令路径】LLM 直接提供属性值（如观影模式→brightness:20, cct:3000）
+                // 绕过 SpkAttributeResolverImpl，信任 LLM 的语义推断
+                attributes = new ArrayList<>(directAttrs.size());
+                for (int j = 0; j < directAttrs.size(); j++) {
+                    JSONObject attrObj = directAttrs.getJSONObject(j);
+                    Map<String, Object> attr = new LinkedHashMap<>(2);
+                    attr.put("key", attrObj.getString("key"));
+                    attr.put("value", attrObj.get("value"));
+                    attributes.add(attr);
+                }
+                log.info("[DeviceTool] 使用 LLM 直传属性: deviceId={}, spk={}, attrs={}", deviceId, spk, attributes);
+            } else {
+                // 【直接控制指令路径】确定性属性解析：spk + userInput → Map<String, Object>
+                if (userInput == null || userInput.isBlank()) {
+                    return ToolResultVO.failure(400, "第 " + (i + 1) + " 个 action 缺少 userInput 或 attributes，"
+                            + "请至少提供一种。场景化指令（如观影模式）请提供 attributes 参数");
                 }
 
-                Map<String, Object> attr = new LinkedHashMap<>(2);
-                attr.put("key", attrKey);
-                attr.put("value", attrValue);
-                attributes.add(attr);
+                Map<String, Object> attrMap = spkAttributeResolver.resolveAttributes(spk, userInput);
+                if (attrMap == null || attrMap.isEmpty()) {
+                    // 解析失败：返回设备 schema 摘要，引导 LLM 自行推断属性值并重试
+                    String schemaSummary = spkAttributeResolver.getSchemaSummary(spk);
+                    return ToolResultVO.failure(422, "无法解析指令「" + userInput + "」的属性。"
+                            + "请根据设备物模型自行推断属性值，通过 attributes 参数重新调用。"
+                            + schemaSummary);
+                }
+
+                // RGB 与 colorful 互斥逻辑
+                applyColorfulMutex(attrMap, userInput);
+
+                attributes = new ArrayList<>(attrMap.size());
+                for (Map.Entry<String, Object> entry : attrMap.entrySet()) {
+                    String attrKey = entry.getKey();
+                    Object attrValue = entry.getValue();
+
+                    // 检测相对调整标记（STEP_UP:{step} / STEP_DOWN:{step}）
+                    // 查询设备当前值并加/减步长，实现"调高一点""调低一点"等相对调整
+                    if (attrValue instanceof String strVal
+                            && (strVal.startsWith("STEP_UP:") || strVal.startsWith("STEP_DOWN:"))) {
+                        Object resolvedValue = resolveStepAdjustValue(deviceId, attrKey,
+                                strVal, sessionContext);
+                        if (resolvedValue != null) {
+                            attrValue = resolvedValue;
+                            log.info("[DeviceTool] 相对调整成功: deviceId={}, attrKey={}, marker={}, newValue={}",
+                                    deviceId, attrKey, strVal, resolvedValue);
+                        } else {
+                            log.warn("[DeviceTool] 相对调整解析失败，跳过属性: deviceId={}, attrKey={}",
+                                    deviceId, attrKey);
+                            continue;
+                        }
+                    }
+
+                    Map<String, Object> attr = new LinkedHashMap<>(2);
+                    attr.put("key", attrKey);
+                    attr.put("value", attrValue);
+                    attributes.add(attr);
+                }
             }
 
             // 构建解析后的 action（含 deviceName 供前端回显）
@@ -242,7 +272,7 @@ public class DeviceTool extends AbstractTool {
             deviceIdsForDetail.append(deviceId);
 
             log.info("[DeviceTool] 设备属性解析: deviceId={}, spk={}, deviceName={}, userInput={}, attrs={}",
-                    deviceId, spk, deviceName, userInput, attrMap);
+                    deviceId, spk, deviceName, userInput, attributes);
         }
 
         // 3. 调用 HDL API 批量控制

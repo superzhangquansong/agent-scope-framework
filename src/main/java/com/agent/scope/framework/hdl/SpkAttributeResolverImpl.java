@@ -144,6 +144,79 @@ public class SpkAttributeResolverImpl implements SpkAttributeResolver {
         }
     }
 
+    /**
+     * 获取设备属性 schema 摘要，用于解析失败时返回给 LLM。
+     * <p>
+     * 遍历该 spk 支持的可写（access 含 W）属性，拼接 key、描述、类型、取值范围、
+     * 枚举值等信息，供 LLM 在处理场景化指令（如"观影模式"）时自行推断属性值。
+     * </p>
+     */
+    @Override
+    public String getSchemaSummary(String spk) {
+        if (spk == null || spk.isBlank()) {
+            return "";
+        }
+        JSONObject schema = findSchema(spk);
+        if (schema == null) {
+            return "";
+        }
+        JSONArray attributes = schema.getJSONArray("attributes");
+        if (attributes == null || attributes.isEmpty()) {
+            return "";
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("spk=").append(spk);
+        String schemaName = schema.getString("name");
+        if (schemaName != null) {
+            sb.append("(").append(schemaName).append(")");
+        }
+        sb.append(" 支持的属性:\n");
+
+        for (int i = 0; i < attributes.size(); i++) {
+            JSONObject attr = attributes.getJSONObject(i);
+            String access = attr.getString("access");
+            // 只返回可写属性（access 含 W），只读属性 LLM 无法控制
+            if (access == null || !access.contains("W")) {
+                continue;
+            }
+            String key = attr.getString("key");
+            String desc = attr.getString("desc");
+            String type = attr.getString("type");
+            sb.append("  - key=").append(key)
+                    .append(", desc=").append(desc)
+                    .append(", type=").append(type);
+
+            // 数值类型：附加 min/max/step/unit
+            if ("number".equals(type)) {
+                Integer min = attr.getInteger("min");
+                Integer max = attr.getInteger("max");
+                Integer step = attr.getInteger("step");
+                String unit = attr.getString("unit");
+                if (min != null) sb.append(", min=").append(min);
+                if (max != null) sb.append(", max=").append(max);
+                if (step != null) sb.append(", step=").append(step);
+                if (unit != null) sb.append(", unit=").append(unit);
+            }
+            // 枚举类型：附加可选值列表
+            if ("enum".equals(type)) {
+                JSONArray enums = attr.getJSONArray("enumerations");
+                if (enums != null && !enums.isEmpty()) {
+                    sb.append(", values=[");
+                    for (int j = 0; j < enums.size(); j++) {
+                        JSONObject en = enums.getJSONObject(j);
+                        if (j > 0) sb.append(", ");
+                        sb.append(en.getString("value"))
+                                .append("(").append(en.getString("desc")).append(")");
+                    }
+                    sb.append("]");
+                }
+            }
+            sb.append("\n");
+        }
+        return sb.toString().trim();
+    }
+
     @Override
     public Map<String, Object> resolveAttributes(String spk, String userInput) {
         Map<String, Object> result = new LinkedHashMap<>();

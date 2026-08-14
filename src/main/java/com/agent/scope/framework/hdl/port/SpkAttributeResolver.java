@@ -21,4 +21,15 @@ public interface SpkAttributeResolver {
      * @return 解析出的属性 Map（如 {on_off:"on", brightness:98, rgb:"0,0,255"}）
      */
     Map<String, Object> resolveAttributes(String spk, String userInput);
+
+    /**
+     * 获取设备属性 schema 摘要（用于解析失败时返回给 LLM，引导其自行赋值）。
+     *
+     * <p>返回该 spk 支持的所有可写属性的 key、描述、类型、取值范围、枚举值等信息，
+     * 供 LLM 在处理场景化指令（如"观影模式"）时自行推断属性值。</p>
+     *
+     * @param spk 设备种类码
+     * @return 属性摘要字符串，spk 不存在时返回空字符串
+     */
+    String getSchemaSummary(String spk);
 }
