@@ -64,6 +64,12 @@ public class SpkAttributeResolverImpl implements SpkAttributeResolver {
     /** 模糊感受默认值配置（number/enum 两类，标准解析失败后兜底） */
     private JSONObject fuzzyDefaults;
 
+    /** 相对调整步长配置（key=属性key，value=步长值，如 brightness→10, cct→100） */
+    private JSONObject adjustSteps;
+
+    /** 相对调整方向关键词配置（up=增加方向关键词数组，down=减少方向关键词数组） */
+    private JSONObject adjustKeywords;
+
     /** Nacos 配置服务（可选，不可用时降级到 classpath） */
     @Autowired(required = false)
     private ConfigService configService;
@@ -90,6 +96,8 @@ public class SpkAttributeResolverImpl implements SpkAttributeResolver {
             this.fallbackSchema = new JSONObject();
             this.colorPresets = new JSONObject();
             this.fuzzyDefaults = new JSONObject();
+            this.adjustSteps = new JSONObject();
+            this.adjustKeywords = new JSONObject();
             return;
         }
 
@@ -99,6 +107,8 @@ public class SpkAttributeResolverImpl implements SpkAttributeResolver {
             this.fallbackSchema = root.getJSONObject("_fallback");
             this.colorPresets = root.getJSONObject("_color_presets");
             this.fuzzyDefaults = root.getJSONObject("_fuzzy_defaults");
+            this.adjustSteps = root.getJSONObject("_adjust_steps");
+            this.adjustKeywords = root.getJSONObject("_adjust_keywords");
             log.info("SPK schema 解析完成，schema 数量: {}", schemas != null ? schemas.size() : 0);
         } catch (Exception e) {
             log.error("解析 spk-schemas.json 失败: {}", e.getMessage(), e);
@@ -106,6 +116,8 @@ public class SpkAttributeResolverImpl implements SpkAttributeResolver {
             this.fallbackSchema = new JSONObject();
             this.colorPresets = new JSONObject();
             this.fuzzyDefaults = new JSONObject();
+            this.adjustSteps = new JSONObject();
+            this.adjustKeywords = new JSONObject();
         }
     }
 
@@ -399,7 +411,8 @@ public class SpkAttributeResolverImpl implements SpkAttributeResolver {
 
         Number num = extractNumberNearKeyword(userInput, aliasList);
         if (num == null) {
-            return null;
+            // 未提取到数字，检测相对调整指令（如"调高一点""调亮一点""调冷一点"）
+            return resolveStepAdjust(attr, userInput, aliasList);
         }
 
         double value = num.doubleValue();
@@ -418,6 +431,89 @@ public class SpkAttributeResolverImpl implements SpkAttributeResolver {
             return (int) value;
         }
         return value;
+    }
+
+    /**
+     * 检测相对调整指令（如"调高一点""调亮一点""调冷一点"）。
+     * <p>
+     * 当属性 alias 匹配但未提取到具体数值时，检查 userInput 是否包含
+     * 相对调整关键词（关键词来源于 spk-schemas.json 的 _adjust_keywords 配置，
+     * 支持 Nacos 热更新）。若匹配则返回 "STEP_UP:{step}" 或 "STEP_DOWN:{step}"，
+     * DeviceTool 据此查询设备当前值并计算新值。
+     * </p>
+     *
+     * @param attr      属性定义 JSON 对象
+     * @param userInput 用户输入
+     * @param aliasList 属性别名列表
+     * @return "STEP_UP:{step}" / "STEP_DOWN:{step}" 或 null
+     */
+    private Object resolveStepAdjust(JSONObject attr, String userInput, List<String> aliasList) {
+        // 确认属性被提及：至少一个 alias 在 userInput 中
+        boolean aliasMatched = false;
+        for (String alias : aliasList) {
+            if (userInput.contains(alias)) {
+                aliasMatched = true;
+                break;
+            }
+        }
+        if (!aliasMatched) {
+            return null;
+        }
+
+        // 从配置加载方向关键词，检测相对调整方向
+        // up=数值增加方向，down=数值减少方向；关键词可热更新，无需改代码
+        boolean isUp = containsConfigKeyword(userInput, "up");
+        boolean isDown = !isUp && containsConfigKeyword(userInput, "down");
+        if (!isUp && !isDown) {
+            return null;
+        }
+
+        // 获取步长：优先 _adjust_steps 全局配置，fallback 到属性自身 step
+        String attrKey = attr.getString("key");
+        int step = 1;
+        if (adjustSteps != null && adjustSteps.containsKey(attrKey)) {
+            step = adjustSteps.getIntValue(attrKey);
+        } else {
+            Integer attrStep = attr.getInteger("step");
+            if (attrStep != null) {
+                step = attrStep;
+            }
+        }
+
+        return (isUp ? "STEP_UP:" : "STEP_DOWN:") + step;
+    }
+
+    /**
+     * 检查 userInput 是否包含 _adjust_keywords 配置中指定方向的关键词。
+     * <p>
+     * 从 {@link #adjustKeywords} 的 up/down 数组中读取关键词，遍历检测 userInput 是否包含。
+     * 关键词按长度降序匹配，优先匹配更具体（更长）的关键词，避免短词误匹配。
+     * </p>
+     *
+     * @param userInput 用户输入
+     * @param direction 方向键名（"up" 或 "down"）
+     * @return 命中返回 true，未命中或配置缺失返回 false
+     */
+    private boolean containsConfigKeyword(String userInput, String direction) {
+        if (adjustKeywords == null) {
+            return false;
+        }
+        JSONArray keywords = adjustKeywords.getJSONArray(direction);
+        if (keywords == null || keywords.isEmpty()) {
+            return false;
+        }
+        // 转为 List 并按长度降序，优先匹配更具体的关键词
+        List<String> sortedKeywords = new ArrayList<>(keywords.size());
+        for (int i = 0; i < keywords.size(); i++) {
+            sortedKeywords.add(keywords.getString(i));
+        }
+        sortedKeywords.sort((a, b) -> b.length() - a.length());
+        for (String kw : sortedKeywords) {
+            if (userInput.contains(kw)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

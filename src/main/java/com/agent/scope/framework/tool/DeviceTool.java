@@ -194,9 +194,29 @@ public class DeviceTool extends AbstractTool {
             // 构建 HDL 期望的 attributes 格式：[{key, value}]
             List<Map<String, Object>> attributes = new ArrayList<>(attrMap.size());
             for (Map.Entry<String, Object> entry : attrMap.entrySet()) {
+                String attrKey = entry.getKey();
+                Object attrValue = entry.getValue();
+
+                // 检测相对调整标记（STEP_UP:{step} / STEP_DOWN:{step}）
+                // 查询设备当前值并加/减步长，实现"调高一点""调低一点"等相对调整
+                if (attrValue instanceof String strVal
+                        && (strVal.startsWith("STEP_UP:") || strVal.startsWith("STEP_DOWN:"))) {
+                    Object resolvedValue = resolveStepAdjustValue(deviceId, attrKey,
+                            strVal, sessionContext);
+                    if (resolvedValue != null) {
+                        attrValue = resolvedValue;
+                        log.info("[DeviceTool] 相对调整成功: deviceId={}, attrKey={}, marker={}, newValue={}",
+                                deviceId, attrKey, strVal, resolvedValue);
+                    } else {
+                        log.warn("[DeviceTool] 相对调整解析失败，跳过属性: deviceId={}, attrKey={}",
+                                deviceId, attrKey);
+                        continue;
+                    }
+                }
+
                 Map<String, Object> attr = new LinkedHashMap<>(2);
-                attr.put("key", entry.getKey());
-                attr.put("value", entry.getValue());
+                attr.put("key", attrKey);
+                attr.put("value", attrValue);
                 attributes.add(attr);
             }
 
@@ -334,5 +354,90 @@ public class DeviceTool extends AbstractTool {
                 log.info("[DeviceTool] 保留 colorful，移除互斥属性: {}", mutexAttrs);
             }
         }
+    }
+
+    /**
+     * 处理相对调整标记（STEP_UP:{step} / STEP_DOWN:{step}）。
+     * <p>
+     * 查询设备当前属性值，加/减步长后返回新值。
+     * 用于"调高一点""调低一点""调亮一点""调暗一点"等相对调整指令。
+     * </p>
+     *
+     * @param deviceId       设备 ID
+     * @param attrKey        属性 key（如 brightness、cct、set_temp、volume）
+     * @param stepMarker     "STEP_UP:10" 或 "STEP_DOWN:10"
+     * @param sessionContext 会话上下文
+     * @return 计算后的新值（Integer 或 Double），查询失败返回 null
+     */
+    private Object resolveStepAdjustValue(String deviceId, String attrKey,
+            String stepMarker, SessionContext sessionContext) {
+        // 解析方向和步长
+        boolean isUp = stepMarker.startsWith("STEP_UP:");
+        int step;
+        try {
+            step = Integer.parseInt(stepMarker.substring(stepMarker.indexOf(':') + 1));
+        } catch (NumberFormatException e) {
+            log.warn("[DeviceTool] 相对调整步长解析失败: {}", stepMarker);
+            return null;
+        }
+
+        // 查询设备当前状态
+        ToolResultVO detailResult = hdlApiPort.queryDeviceDetail(deviceId, sessionContext);
+        if (detailResult == null || !detailResult.isSuccess() || detailResult.getData() == null) {
+            log.warn("[DeviceTool] 相对调整：查询设备详情失败, deviceId={}", deviceId);
+            return null;
+        }
+
+        // 从返回数据中提取设备列表（data 可能是 List 或 Map 含 list/devices/records 键）
+        List<?> deviceList = null;
+        Object data = detailResult.getData();
+        if (data instanceof List<?> list) {
+            deviceList = list;
+        } else if (data instanceof Map<?, ?> map) {
+            Object listObj = map.get("list");
+            if (listObj == null) listObj = map.get("devices");
+            if (listObj == null) listObj = map.get("records");
+            if (listObj instanceof List<?> rawList) {
+                deviceList = rawList;
+            }
+        }
+
+        if (deviceList == null || deviceList.isEmpty()) {
+            log.warn("[DeviceTool] 相对调整：设备列表为空, deviceId={}", deviceId);
+            return null;
+        }
+
+        // 遍历设备列表找到目标设备，提取属性当前值
+        for (Object devObj : deviceList) {
+            if (!(devObj instanceof Map<?, ?> dev)) {
+                continue;
+            }
+            String devId = String.valueOf(dev.get("deviceId"));
+            if (!deviceId.equals(devId)) {
+                continue;
+            }
+            // 设备的 attributes 数组：[{key, value}]
+            Object attrsObj = dev.get("attributes");
+            if (attrsObj instanceof List<?> attrs) {
+                for (Object attrObj : attrs) {
+                    if (!(attrObj instanceof Map<?, ?> attr)) {
+                        continue;
+                    }
+                    String key = String.valueOf(attr.get("key"));
+                    if (attrKey.equals(key)) {
+                        Object val = attr.get("value");
+                        if (val instanceof Number num) {
+                            double currentVal = num.doubleValue();
+                            double newVal = isUp ? currentVal + step : currentVal - step;
+                            return (newVal == Math.floor(newVal) && !Double.isInfinite(newVal))
+                                    ? (int) newVal : newVal;
+                        }
+                    }
+                }
+            }
+        }
+
+        log.warn("[DeviceTool] 相对调整：未找到属性当前值, deviceId={}, attrKey={}", deviceId, attrKey);
+        return null;
     }
 }

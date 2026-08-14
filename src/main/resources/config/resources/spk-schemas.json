@@ -88,7 +88,9 @@
         {"key": "mode", "desc": "模式", "type": "enum", "access": "WR", "aliases": ["模式", "制冷", "制热", "送风", "自动", "除湿", "睡眠"], "enumerations": [{"value": "cool", "desc": "制冷"}, {"value": "heat", "desc": "制热"}, {"value": "fan", "desc": "送风"}, {"value": "auto", "desc": "自动"}, {"value": "dry", "desc": "除湿"}, {"value": "sleep", "desc": "睡眠"}, {"value": "c_1", "desc": "自定义1"}, {"value": "c_2", "desc": "自定义2"}, {"value": "c_3", "desc": "自定义3"}]},
         {"key": "fan", "desc": "风速", "type": "enum", "access": "WR", "aliases": ["风速", "风量", "风力", "高档", "中档", "低档", "自动档", "更低", "更高", "调高", "调低", "加大", "减小"], "enumerations": [{"value": "high", "desc": "高"}, {"value": "medium", "desc": "中"}, {"value": "low", "desc": "低"}, {"value": "auto", "desc": "自动"}, {"value": "lower", "desc": "更低"}, {"value": "higher", "desc": "更高"}, {"value": "c_1", "desc": "自定义1"}, {"value": "c_2", "desc": "自定义2"}, {"value": "c_3", "desc": "自定义3"}]},
         {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 16, "max": 32, "step": 1, "aliases": ["温度", "设定温度", "调到", "设为", "度"]},
-        {"key": "current_temp", "desc": "当前温度", "type": "number", "access": "R", "unit": "℃", "aliases": ["当前温度", "室温"]}
+        {"key": "current_temp", "desc": "当前温度", "type": "number", "access": "R", "unit": "℃", "aliases": ["当前温度", "室温"]},
+        {"key": "swing_up_down", "desc": "上下摆风", "type": "enum", "access": "WR", "aliases": ["上下摆风", "上下扫风", "垂直摆风", "开启摆风", "关闭摆风", "摆风"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "swing_left_right", "desc": "左右摆风", "type": "enum", "access": "WR", "aliases": ["左右摆风", "左右扫风", "水平摆风"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]}
       ]
     },
 
@@ -119,7 +121,9 @@
       "aliases": ["地热", "地暖", "地板采暖"],
       "attributes": [
         {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
-        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 5, "max": 45, "step": 1, "aliases": ["温度", "设定温度", "调到", "设为", "度"]}
+        {"key": "mode", "desc": "模式", "type": "enum", "access": "WR", "aliases": ["模式", "手动", "编程", "自动", "节能", "制热"], "enumerations": [{"value": "manual", "desc": "手动"}, {"value": "program", "desc": "编程"}, {"value": "auto", "desc": "自动"}, {"value": "eco", "desc": "节能"}]},
+        {"key": "set_temp", "desc": "设定温度", "type": "number", "access": "WR", "unit": "℃", "min": 5, "max": 45, "step": 1, "aliases": ["温度", "设定温度", "调到", "设为", "度"]},
+        {"key": "current_temp", "desc": "当前温度", "type": "number", "access": "R", "unit": "℃", "aliases": ["当前温度", "室温"]}
       ]
     },
 
@@ -171,12 +175,22 @@
       ]
     },
 
+    "curtain.lily": {
+      "name": "百合帘",
+      "aliases": ["百合帘", "百合窗帘", "蜂窝百合"],
+      "attributes": [
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "打开", "关闭", "停止"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}, {"value": "stop", "desc": "停"}]},
+        {"key": "position", "desc": "位置", "type": "number", "access": "WR", "unit": "%", "min": 0, "max": 100, "step": 1, "aliases": ["位置", "开度", "打开到", "关闭到", "开到", "一半", "全开", "全关"]}
+      ]
+    },
+
     "av.music": {
       "name": "音乐",
       "aliases": ["音乐", "背景音乐", "音响"],
       "attributes": [
-        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "播放", "停止"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
-        {"key": "volume", "desc": "音量", "type": "number", "access": "WR", "unit": "%", "min": 0, "max": 100, "step": 1, "aliases": ["音量", "音量大", "音量小", "大声", "小声"]},
+        {"key": "on_off", "desc": "开关", "type": "enum", "access": "WR", "aliases": ["开", "关", "打开", "关闭"], "enumerations": [{"value": "on", "desc": "开"}, {"value": "off", "desc": "关"}]},
+        {"key": "play_control", "desc": "播放控制", "type": "enum", "access": "WR", "aliases": ["播放", "播放音乐", "暂停", "暂停音乐", "继续", "继续播放", "下一首", "上一首", "停止", "停止音乐", "关闭音乐"], "enumerations": [{"value": "play", "desc": "播放"}, {"value": "pause", "desc": "暂停"}, {"value": "resume", "desc": "继续"}, {"value": "next", "desc": "下一首"}, {"value": "previous", "desc": "上一首"}, {"value": "stop", "desc": "停止"}]},
+        {"key": "volume", "desc": "音量", "type": "number", "access": "WR", "unit": "%", "min": 0, "max": 100, "step": 1, "aliases": ["音量", "声音", "音量大", "音量小", "大声", "小声", "声音调大", "声音调小"]},
         {"key": "play_mode", "desc": "播放模式", "type": "enum", "access": "WR", "aliases": ["播放模式", "顺序播放", "随机播放", "单曲循环"], "enumerations": [{"value": "sequence", "desc": "顺序"}, {"value": "random", "desc": "随机"}, {"value": "single", "desc": "单曲循环"}]},
         {"key": "source", "desc": "音源", "type": "enum", "access": "WR", "aliases": ["音源", "蓝牙", "AUX", "USB", "网络"], "enumerations": [{"value": "bluetooth", "desc": "蓝牙"}, {"value": "aux", "desc": "AUX"}, {"value": "usb", "desc": "USB"}, {"value": "network", "desc": "网络"}]}
       ]
@@ -1655,5 +1669,18 @@
       "太冷": "heat", "有点冷": "heat", "冷": "heat",
       "太热": "cool", "有点热": "cool", "热": "cool"
     }
+  },
+  "_adjust_steps": {
+    "_comment": "相对调整（调高一点/调低一点）的默认步长。key 为属性 key，value 为步长值。SpkAttributeResolverImpl 检测到相对调整关键词时使用此步长计算新值",
+    "brightness": 10,
+    "cct": 100,
+    "set_temp": 1,
+    "volume": 1,
+    "position": 10
+  },
+  "_adjust_keywords": {
+    "_comment": "相对调整方向关键词配置。up=数值增加方向关键词数组，down=数值减少方向关键词数组。SpkAttributeResolverImpl 遍历这些关键词检测相对调整指令。新增/修改关键词只需改此配置，支持 Nacos 热更新，无需改代码",
+    "up": ["调高", "高一点", "高些", "调大", "大一点", "大些", "调亮", "亮一点", "亮些", "加大", "增高", "增大", "调冷", "冷一点", "冷些", "升高", "增加", "强一点"],
+    "down": ["调低", "低一点", "低些", "调小", "小一点", "小些", "调暗", "暗一点", "暗些", "减小", "降低", "调暖", "暖一点", "暖些", "调热", "热一点", "减少", "弱一点"]
   }
 }
