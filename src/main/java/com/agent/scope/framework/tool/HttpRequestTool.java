@@ -5,11 +5,7 @@ import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.tool.Tool;
 import io.agentscope.core.tool.ToolParam;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.*;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
@@ -45,13 +41,19 @@ import java.util.Map;
 @Component
 public class HttpRequestTool extends AbstractTool {
 
-    /** 请求超时时间（毫秒） */
+    /**
+     * 请求超时时间（毫秒）
+     */
     private static final int REQUEST_TIMEOUT_MS = 30000;
 
-    /** 响应体最大大小（字节），1MB */
+    /**
+     * 响应体最大大小（字节），1MB
+     */
     private static final int MAX_RESPONSE_SIZE = 1024 * 1024;
 
-    /** RestTemplate 实例（延迟初始化，线程安全） */
+    /**
+     * RestTemplate 实例（延迟初始化，线程安全）
+     */
     private static volatile RestTemplate restTemplate;
 
     /**
@@ -61,19 +63,20 @@ public class HttpRequestTool extends AbstractTool {
      * 支持 GET/POST/PUT/DELETE 方法，支持自定义请求头和请求体。
      * </p>
      *
-     * @param method     HTTP 方法（GET/POST/PUT/DELETE）
-     * @param url        完整请求 URL（含 query string）
-     * @param headers    请求头 JSON（可选，如 {"Content-Type":"application/json","Authorization":"Bearer xxx"}）
-     * @param body       请求体 JSON（可选，POST/PUT 时使用）
+     * @param method         HTTP 方法（GET/POST/PUT/DELETE）
+     * @param url            完整请求 URL（含 query string）
+     * @param headers        请求头 JSON（可选，如 {"Content-Type":"application/json","Authorization":"Bearer xxx"}）
+     * @param body           请求体 JSON（可选，POST/PUT 时使用）
      * @param runtimeContext 运行时上下文（自动注入）
      * @return 工具结果 VO（data 含 statusCode/headers/body）
      */
     @Tool(name = "http_request",
-            description = "发送HTTP请求调用外部API。根据SKILL.md中的接口文档构造请求参数。"
-                    + "参数说明：method=HTTP方法(GET/POST/PUT/DELETE)，url=完整请求URL，"
-                    + "headers=请求头JSON(可选)，body=请求体JSON(可选)。"
-                    + "返回：HTTP状态码、响应头、响应体。"
-                    + "使用场景：当skill_load加载的技能文档中描述了需要调用的HTTP接口时，使用本工具发起请求。",
+            description = """
+                    发送HTTP请求调用外部API。根据SKILL.md中的接口文档构造请求参数。
+                    参数说明：method=HTTP方法(GET/POST/PUT/DELETE)，url=完整请求URL，headers=请求头JSON(可选)，body=请求体JSON(可选)。
+                    返回：HTTP状态码、响应头、响应体。
+                    使用场景：当skill_load加载的技能文档中描述了需要调用的HTTP接口时，使用本工具发起请求。
+                    """,
             readOnly = false)
     public ToolResultVO httpRequest(
             @ToolParam(name = "method", required = true,
@@ -175,7 +178,7 @@ public class HttpRequestTool extends AbstractTool {
      * 解析请求头 JSON 字符串到 HttpHeaders。
      *
      * @param headersJson 请求头 JSON 字符串
-     * @param httpHeaders  目标 HttpHeaders 对象
+     * @param httpHeaders 目标 HttpHeaders 对象
      */
     private void parseHeaders(String headersJson, HttpHeaders httpHeaders) {
         try {

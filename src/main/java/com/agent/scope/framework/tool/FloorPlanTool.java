@@ -44,7 +44,9 @@
 //@RequiredArgsConstructor
 //public class FloorPlanTool extends AbstractTool {
 //
-//    /** 户型图方案端口（六边形架构端口，FloorPlanServiceImpl 实现） */
+//    /**
+//     * 户型图方案端口（六边形架构端口，FloorPlanServiceImpl 实现）
+//     */
 //    private final FloorPlanPort floorPlanPort;
 //
 //    /**
@@ -66,11 +68,12 @@
 //     * @return 工具结果 VO（data 为 FloorPlanVO，含 rooms/products/positions/totalPrice）
 //     */
 //    @Tool(name = "analyze_floor_plan",
-//            description = "分析户型图并生成智能家居产品推荐方案。"
-//                    + "使用场景：用户上传户型图图片并要求生成产品方案时调用此工具。"
-//                    + "功能：识别户型图中的房间（客厅/卧室/厨房等）→ 根据用户需求推荐 HDL 智能设备 → "
-//                    + "应用预算约束 → 为每个设备分配户型图坐标位置 → 生成可下载的方案清单。"
-//                    + "注意：图片数据从会话上下文自动获取，无需在参数中传递图片，只需传递用户需求文本。",
+//            description = """
+//                    分析户型图并生成智能家居产品推荐方案。
+//                    使用场景：用户上传户型图图片并要求生成产品方案时调用此工具。
+//                    功能：识别户型图中的房间（客厅/卧室/厨房等）→ 根据用户需求推荐 HDL 智能设备 → 应用预算约束 → 为每个设备分配户型图坐标位置 → 生成可下载的方案清单。
+//                    注意：图片数据从会话上下文自动获取，无需在参数中传递图片，只需传递用户需求文本。
+//                    """,
 //            readOnly = true)
 //    public ToolResultVO analyzeFloorPlan(
 //            @ToolParam(name = "userRequirement", required = true,

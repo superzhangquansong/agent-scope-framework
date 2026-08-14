@@ -46,19 +46,29 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class DeviceTool extends AbstractTool {
 
-    /** HDL 业务 API 端口 */
+    /**
+     * HDL 业务 API 端口
+     */
     private final HdlApiPort hdlApiPort;
 
-    /** SPK 物模型属性解析器（确定性关键词匹配，不调 LLM） */
+    /**
+     * SPK 物模型属性解析器（确定性关键词匹配，不调 LLM）
+     */
     private final SpkAttributeResolver spkAttributeResolver;
 
-    /** 属性互斥规则端口（Nacos 热重载） */
+    /**
+     * 属性互斥规则端口（Nacos 热重载）
+     */
     private final AttributeMutexRules attributeMutexRules;
 
-    /** 设备列表上下文缓存服务（缓存查询结果并注入系统提示词，避免重复查询） */
+    /**
+     * 设备列表上下文缓存服务（缓存查询结果并注入系统提示词，避免重复查询）
+     */
     private final DeviceContextService deviceContextService;
 
-    /** colorful 属性名（HDL 物模型协议字段） */
+    /**
+     * colorful 属性名（HDL 物模型协议字段）
+     */
     private static final String ATTR_COLORFUL = "colorful";
 
     /**
@@ -71,10 +81,11 @@ public class DeviceTool extends AbstractTool {
      * @return 工具结果 VO（data 为设备列表 JSON）
      */
     @Tool(name = "query_device_list",
-            description = "查询 HDL 设备列表。返回当前房屋下所有设备的 ID、名称、种类码、网关 ID、sid 等信息。"
-                    + "使用场景：全开/全关场景，或系统提示词中无缓存的设备列表时调用。"
-                    + "若系统提示词已包含【当前房屋设备列表（缓存）】，直接使用缓存数据，无需调用本工具。"
-                    + "禁止事项：禁止根据用户描述编造设备 ID 或网关 ID，所有 ID 必须来自本工具的返回结果或系统提示词中的缓存列表。",
+            description = """
+                    查询 HDL 设备列表。返回当前房屋下所有设备的 ID、名称、种类码、网关 ID、sid 等信息。
+                    使用场景：全开/全关场景，或系统提示词中无缓存的设备列表时调用。若系统提示词已包含【当前房屋设备列表（缓存）】，直接使用缓存数据，无需调用本工具。
+                    禁止事项：禁止根据用户描述编造设备 ID 或网关 ID，所有 ID 必须来自本工具的返回结果或系统提示词中的缓存列表。
+                    """,
             readOnly = true)
     public ToolResultVO queryDeviceList(RuntimeContext runtimeContext) {
         SessionContext sessionContext = resolveSessionContext(runtimeContext);
@@ -97,13 +108,17 @@ public class DeviceTool extends AbstractTool {
      * @return 工具结果 VO（data 为设备详情 JSON 数组）
      */
     @Tool(name = "query_device_detail",
-            description = "查询 HDL 设备详情（最新状态）。传入设备 ID 列表（逗号分隔），返回设备的开关、亮度、色温、在线状态等。"
-                    + "使用场景：控制设备后查询最新状态，或单独查询设备当前状态。"
-                    + "参数来源要求：设备 ID 必须来自 query_device_list 的返回结果，禁止编造。",
+            description = """
+                    查询 HDL 设备详情（最新状态）。传入设备 ID 列表（逗号分隔），返回设备的开关、亮度、色温、在线状态等。
+                    使用场景：控制设备后查询最新状态，或单独查询设备当前状态。
+                    参数来源要求：设备 ID 必须来自 query_device_list 的返回结果，禁止编造。
+                    """,
             readOnly = true)
     public ToolResultVO queryDeviceDetail(
-            @ToolParam(name = "deviceIds", required = true,
-                    description = "设备ID列表，逗号分隔。必须来自query_device_list返回的真实设备ID，禁止使用示例ID") String deviceIds,
+            @ToolParam(name = "deviceIds",
+                    required = true,
+                    description = "设备ID列表，逗号分隔。必须来自query_device_list返回的真实设备ID，禁止使用示例ID"
+            ) String deviceIds,
             RuntimeContext runtimeContext) {
 
         SessionContext sessionContext = resolveSessionContext(runtimeContext);
@@ -123,29 +138,34 @@ public class DeviceTool extends AbstractTool {
      * @return 工具结果 VO（data 含 controlResult 和 devices 设备详情）
      */
     @Tool(name = "batch_control_device",
-            description = "批量控制多个 HDL 设备（多设备合并一次请求）。"
-                    + "使用场景：当用户指令包含一个或多个设备控制时使用此工具，如'RGB开蓝色亮度77调光开冷色亮度99'、'打开客厅灯'。"
-                    + "全关/全开场景：用户说'全关'、'全开'、'关闭所有设备'、'打开所有设备'时，直接传 mode='all_off' 或 mode='all_on'，"
-                    + "无需传 actionsJson，工具内部自动查询所有设备并控制。禁止逐个枚举设备！"
-                    + "参数来源要求：actionsJson 中每个元素的 deviceId/gatewayId/spk/deviceName 必须来自 query_device_list 返回结果。"
-                    + "设备名称优先匹配：用户输入中的设备关键词应优先匹配设备列表中名称包含该关键词的设备。"
-                    + "多设备合并：用户输入可能没有逗号分隔符（如'调光开冷色亮度48RGB开红色亮度88'），"
-                    + "这是多个设备控制指令连写，必须识别为多设备控制合并为一次 batch_control_device 调用，禁止拆分成多次调用。"
-                    + "【场景化指令处理】：当用户说'观影模式''会客模式''睡眠模式''浪漫模式'等场景词时，"
-                    + "必须为每个设备提供 attributes 参数（直接指定属性值），不能只传 userInput 场景词。"
-                    + "LLM 应根据场景语义自行推断每个设备的合理属性值，如观影模式→灯光亮度20%暖色+空调26度制冷。"
-                    + "禁止事项：禁止编造设备 ID、网关 ID 或种类码；禁止使用示例值。",
+            description = """
+                    批量控制多个 HDL 设备（多设备合并一次请求）。
+                    使用场景：当用户指令包含一个或多个设备控制时使用此工具，如'RGB开蓝色亮度77调光开冷色亮度99'、'打开客厅灯'。
+                    全关/全开场景：用户说'全关'、'全开'、'关闭所有设备'、'打开所有设备'时，直接传 mode='all_off' 或 mode='all_on'，无需传 actionsJson，工具内部自动查询所有设备并控制。禁止逐个枚举设备！
+                    参数来源要求：actionsJson 中每个元素的 deviceId/gatewayId/spk/deviceName 必须来自 query_device_list 返回结果。
+                    设备名称优先匹配：用户输入中的设备关键词应优先匹配设备列表中名称包含该关键词的设备。
+                    多设备合并：用户输入可能没有逗号分隔符（如'调光开冷色亮度48RGB开红色亮度88'），这是多个设备控制指令连写，必须识别为多设备控制合并为一次 batch_control_device 调用，禁止拆分成多次调用。
+                    【场景化指令处理】：当用户说'观影模式''会客模式''睡眠模式''浪漫模式'等场景词时，必须为每个设备提供 attributes 参数（直接指定属性值），不能只传 userInput 场景词。
+                    LLM 应根据场景语义自行推断每个设备的合理属性值，如观影模式→灯光亮度20%暖色+空调26度制冷。
+                    禁止事项：禁止编造设备 ID、网关 ID 或种类码；禁止使用示例值。
+                    """,
             readOnly = true,
-            concurrencySafe = false)
+            concurrencySafe = false
+    )
     public ToolResultVO batchControlDevice(
-            @ToolParam(name = "actionsJson", required = false,
-                    description = "设备动作JSON数组字符串。"
-                    + "【直接控制指令】（如'开灯''亮度调到50'）：传 userInput，工具自动解析属性。"
-                    + "格式：[{\"deviceId\":\"<真实ID>\",\"gatewayId\":\"<真实ID>\",\"spk\":\"<真实spk>\",\"userInput\":\"开灯\",\"deviceName\":\"<真实名称>\"}]。"
-                    + "【场景化指令】（如'观影模式''睡眠模式'）：必须传 attributes，LLM 自行推断属性值。"
-                    + "格式：[{\"deviceId\":\"<真实ID>\",\"gatewayId\":\"<真实ID>\",\"spk\":\"light.rgbcw\",\"deviceName\":\"RGBCW灯\",\"attributes\":[{\"key\":\"on_off\",\"value\":\"on\"},{\"key\":\"brightness\",\"value\":20},{\"key\":\"cct\",\"value\":3000}]}]。"
-                    + "attributes 的 key 和 value 必须符合 spk 对应的物模型属性定义（可写属性）。"
-                    + "全关/全开时留空，传mode参数。deviceId/gatewayId/spk/deviceName必须来自query_device_list返回结果") String actionsJson,
+            @ToolParam(
+                    name = "actionsJson",
+                    required = false,
+                    description = """
+                            设备动作JSON数组字符串。
+                            【直接控制指令】（如'开灯''亮度调到50'）：传 userInput，工具自动解析属性。
+                            格式：[{"deviceId":"<真实ID>","gatewayId":"<真实ID>","spk":"<真实spk>","userInput":"开灯","deviceName":"<真实名称>"}]。
+                            【场景化指令】（如'观影模式''睡眠模式'）：必须传 attributes，LLM 自行推断属性值。
+                            格式：[{"deviceId":"<真实ID>","gatewayId":"<真实ID>","spk":"light.rgbcw","deviceName":"RGBCW灯","attributes":[{"key":"on_off","value":"on"},{"key":"brightness","value":20},{"key":"cct","value":3000}]}]。
+                            attributes 的 key 和 value 必须符合 spk 对应的物模型属性定义（可写属性）。
+                            全关/全开时留空，传mode参数。deviceId/gatewayId/spk/deviceName必须来自query_device_list返回结果
+                            """
+            ) String actionsJson,
             @ToolParam(name = "mode", required = false,
                     description = "全关/全开模式。'all_off'=全关所有设备，'all_on'=全开所有设备。设置后无需传actionsJson，工具内部自动查询并控制所有设备") String mode,
             RuntimeContext runtimeContext) {
@@ -400,7 +420,7 @@ public class DeviceTool extends AbstractTool {
      * @return 计算后的新值（Integer 或 Double），查询失败返回 null
      */
     private Object resolveStepAdjustValue(String deviceId, String attrKey,
-            String stepMarker, SessionContext sessionContext) {
+                                          String stepMarker, SessionContext sessionContext) {
         // 解析方向和步长
         boolean isUp = stepMarker.startsWith("STEP_UP:");
         int step;

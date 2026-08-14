@@ -23,7 +23,9 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class HomeTool extends AbstractTool {
 
-    /** HDL 业务 API 端口 */
+    /**
+     * HDL 业务 API 端口
+     */
     private final HdlApiPort hdlApiPort;
 
     /**
@@ -36,10 +38,12 @@ public class HomeTool extends AbstractTool {
      * @return 工具结果 VO（data 为房屋列表 JSON）
      */
     @Tool(name = "query_home_list",
-            description = "查询用户绑定的 HDL 房屋列表。返回房屋 ID、名称、类型、设备数量等信息。"
-                    + "使用场景：用户首次接入、切换房屋、或询问'我有哪些房屋'时调用。"
-                    + "参数来源要求：无业务参数，无需 LLM 提供任何 ID。"
-                    + "禁止事项：禁止编造房屋 ID，场景查询等后续操作所需的 homeId 必须来自本工具返回结果。",
+            description = """
+                    查询用户绑定的 HDL 房屋列表。返回房屋 ID、名称、类型、设备数量等信息。
+                    使用场景：用户首次接入、切换房屋、或询问'我有哪些房屋'时调用。
+                    参数来源要求：无业务参数，无需 LLM 提供任何 ID。
+                    禁止事项：禁止编造房屋 ID，场景查询等后续操作所需的 homeId 必须来自本工具返回结果。
+                    """,
             readOnly = true)
     public ToolResultVO queryHomeList(RuntimeContext runtimeContext) {
         SessionContext sessionContext = resolveSessionContext(runtimeContext);

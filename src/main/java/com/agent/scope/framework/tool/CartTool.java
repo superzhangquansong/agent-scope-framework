@@ -23,7 +23,9 @@
 //@RequiredArgsConstructor
 //public class CartTool extends AbstractTool {
 //
-//    /** HDL 业务 API 端口 */
+//    /**
+//     * HDL 业务 API 端口
+//     */
 //    private final HdlApiPort hdlApiPort;
 //
 //    /**
@@ -37,11 +39,14 @@
 //     * @return 工具结果 VO
 //     */
 //    @Tool(name = "add_to_cart",
-//            description = "将指定 SKU 加入 HDL 商城购物车。"
-//                    + "使用场景：用户说'加入购物车'、'买 2 个方悦'、'加入 1 个调光灯'时调用。"
-//                    + "参数来源要求：skuId 和 productId 必须来自 search_product 或 query_product_detail 的返回结果。"
-//                    + "禁止事项：禁止编造 skuId 或 productId。",
-//            concurrencySafe = false)
+//            description = """
+//                    将指定 SKU 加入 HDL 商城购物车。
+//                    使用场景：用户说'加入购物车'、'买 2 个方悦'、'加入 1 个调光灯'时调用。
+//                    参数来源要求：skuId 和 productId 必须来自 search_product 或 query_product_detail 的返回结果。
+//                    禁止事项：禁止编造 skuId 或 productId。
+//                    """,
+//            concurrencySafe = false
+//    )
 //    public ToolResultVO addToCart(
 //            @ToolParam(name = "skuId", required = true,
 //                    description = "SKU ID。示例：SKU12345。从query_product_detail返回结果获取") String skuId,
@@ -66,9 +71,12 @@
 //     * @return 工具结果 VO
 //     */
 //    @Tool(name = "query_cart_list",
-//            description = "查询 HDL 商城购物车列表。返回购物车中所有商品信息（含产品名、数量、价格等）。"
-//                    + "使用场景：用户说'看看购物车'、'购物车有什么'时调用。",
-//            readOnly = true)
+//            description = """
+//                    查询 HDL 商城购物车列表。返回购物车中所有商品信息（含产品名、数量、价格等）。
+//                    使用场景：用户说'看看购物车'、'购物车有什么'时调用。
+//                    """,
+//            readOnly = true
+//    )
 //    public ToolResultVO queryCartList(RuntimeContext runtimeContext) {
 //        SessionContext sessionContext = resolveSessionContext(runtimeContext);
 //        log.info("[CartTool] 查询购物车列表: userId={}", sessionContext.getUserId());

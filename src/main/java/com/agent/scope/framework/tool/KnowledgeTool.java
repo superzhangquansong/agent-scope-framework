@@ -24,7 +24,9 @@
 //@RequiredArgsConstructor
 //public class KnowledgeTool extends AbstractTool {
 //
-//    /** HDL 业务 API 端口 */
+//    /**
+//     * HDL 业务 API 端口
+//     */
 //    private final HdlApiPort hdlApiPort;
 //
 //    /**
@@ -35,9 +37,11 @@
 //     * @return 工具结果 VO（data 为检索到的文档片段 JSON）
 //     */
 //    @Tool(name = "query_knowledge",
-//            description = "HDL 知识库语义检索（RAG）。对用户问题进行向量检索，返回最相关的文档片段。"
-//                    + "使用场景：适用于产品手册、安装指南、质保政策等知识查询，如'调光灯怎么接线'、'产品质保多久'、'RGB 灯带怎么配对'。"
-//                    + "禁止事项：禁止对设备控制、场景执行等实时操作类问题调用本工具，此类问题应调用对应的业务工具。",
+//            description = """
+//                    HDL 知识库语义检索（RAG）。对用户问题进行向量检索，返回最相关的文档片段。
+//                    使用场景：适用于产品手册、安装指南、质保政策等知识查询，如'调光灯怎么接线'、'产品质保多久'、'RGB 灯带怎么配对'。
+//                    禁止事项：禁止对设备控制、场景执行等实时操作类问题调用本工具，此类问题应调用对应的业务工具。
+//                    """,
 //            readOnly = true)
 //    public ToolResultVO queryKnowledge(
 //            @ToolParam(name = "question", required = true,

@@ -23,7 +23,9 @@
 //@RequiredArgsConstructor
 //public class EnergyTool extends AbstractTool {
 //
-//    /** HDL 业务 API 端口 */
+//    /**
+//     * HDL 业务 API 端口
+//     */
 //    private final HdlApiPort hdlApiPort;
 //
 //    /**
@@ -34,9 +36,11 @@
 //     * @return 工具结果 VO
 //     */
 //    @Tool(name = "query_energy_station_list",
-//            description = "查询 HDL 储能电站列表。返回用户绑定的所有储能电站信息。"
-//                    + "使用场景：用户询问'电站列表'、'有哪些储能电站'时调用。"
-//                    + "参数来源要求：homeName 可选，从用户输入提取。",
+//            description = """
+//                    查询 HDL 储能电站列表。返回用户绑定的所有储能电站信息。
+//                    使用场景：用户询问'电站列表'、'有哪些储能电站'时调用。
+//                    参数来源要求：homeName 可选，从用户输入提取。
+//                    """,
 //            readOnly = true)
 //    public ToolResultVO queryEnergyStationList(
 //            @ToolParam(name = "homeName", required = false,
@@ -57,9 +61,11 @@
 //     * @return 工具结果 VO
 //     */
 //    @Tool(name = "query_energy_station_detail",
-//            description = "查询 HDL 储能电站详情。返回电站的详细信息（含电池 SOC、充放电状态等）。"
-//                    + "使用场景：用户询问'电站详情'、'储能电站状态'时调用。"
-//                    + "参数来源要求：homeId 可选，留空时自动使用当前房屋 ID。",
+//            description = """
+//                    查询 HDL 储能电站详情。返回电站的详细信息（含电池 SOC、充放电状态等）。
+//                    使用场景：用户询问'电站详情'、'储能电站状态'时调用。
+//                    参数来源要求：homeId 可选，留空时自动使用当前房屋 ID。
+//                    """,
 //            readOnly = true)
 //    public ToolResultVO queryEnergyStationDetail(
 //            @ToolParam(name = "homeId", required = false,
@@ -80,9 +86,11 @@
 //     * @return 工具结果 VO
 //     */
 //    @Tool(name = "query_inverter_info",
-//            description = "查询 HDL 逆变器实时数据。返回电池 SOC、充放电功率、光伏功率等实时信息。"
-//                    + "使用场景：用户询问'逆变器数据'、'电池电量'、'光伏功率'时调用。"
-//                    + "参数来源要求：homeId 可选，留空时自动使用当前房屋 ID。",
+//            description = """
+//                    查询 HDL 逆变器实时数据。返回电池 SOC、充放电功率、光伏功率等实时信息。
+//                    使用场景：用户询问'逆变器数据'、'电池电量'、'光伏功率'时调用。
+//                    参数来源要求：homeId 可选，留空时自动使用当前房屋 ID。
+//                    """,
 //            readOnly = true)
 //    public ToolResultVO queryInverterInfo(
 //            @ToolParam(name = "homeId", required = false,

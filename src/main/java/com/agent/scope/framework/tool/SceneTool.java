@@ -35,25 +35,39 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class SceneTool extends AbstractTool {
 
-    /** HDL 业务 API 端口 */
+    /**
+     * HDL 业务 API 端口
+     */
     private final HdlApiPort hdlApiPort;
 
-    /** SPK 物模型属性解析器 */
+    /**
+     * SPK 物模型属性解析器
+     */
     private final SpkAttributeResolver spkAttributeResolver;
 
-    /** 属性互斥规则端口（Nacos 热重载） */
+    /**
+     * 属性互斥规则端口（Nacos 热重载）
+     */
     private final AttributeMutexRules attributeMutexRules;
 
-    /** colorful 属性名 */
+    /**
+     * colorful 属性名
+     */
     private static final String ATTR_COLORFUL = "colorful";
 
-    /** 默认延迟执行秒数 */
+    /**
+     * 默认延迟执行秒数
+     */
     private static final int DEFAULT_DELAY_SECONDS = 0;
 
-    /** spk 长度阈值：超过此长度疑似 sid */
+    /**
+     * spk 长度阈值：超过此长度疑似 sid
+     */
     private static final int SPK_MAX_LENGTH = 20;
 
-    /** spk 格式分隔符 */
+    /**
+     * spk 格式分隔符
+     */
     private static final String SPK_SEPARATOR = ".";
 
     /**
@@ -65,10 +79,12 @@ public class SceneTool extends AbstractTool {
      * @return 工具结果 VO（data 为场景列表 JSON）
      */
     @Tool(name = "query_scene_list",
-            description = "查询 HDL 场景列表。查询当前房屋下所有场景（homeId 可不传，默认查当前房屋），可选按房间 ID 过滤。"
-                    + "使用场景：用户询问'有哪些场景'、'回家模式'、'启动离家场景'前先查询场景列表获取 sceneId。"
-                    + "参数来源要求：homeId 从 query_home_list 获取或留空使用当前房屋；roomId 从 query_device_list 获取或留空。"
-                    + "禁止事项：禁止编造场景 ID，执行场景前必须先调用本工具获取真实 sceneId。",
+            description = """
+                    查询 HDL 场景列表。查询当前房屋下所有场景（homeId 可不传，默认查当前房屋），可选按房间 ID 过滤。
+                    使用场景：用户询问'有哪些场景'、'回家模式'、'启动离家场景'前先查询场景列表获取 sceneId。
+                    参数来源要求：homeId 从 query_home_list 获取或留空使用当前房屋；roomId 从 query_device_list 获取或留空。
+                    禁止事项：禁止编造场景 ID，执行场景前必须先调用本工具获取真实 sceneId。
+                    """,
             readOnly = true)
     public ToolResultVO querySceneList(
             @ToolParam(name = "homeId", required = false,
@@ -95,10 +111,12 @@ public class SceneTool extends AbstractTool {
      * @return 工具结果 VO
      */
     @Tool(name = "execute_scene",
-            description = "执行 HDL 场景。传入场景 ID，触发该场景包含的所有设备控制动作（如'回家模式'会自动开关多个设备）。"
-                    + "使用场景：用户说'启动回家场景'、'执行晚安模式'、'打开离家场景'时调用。"
-                    + "参数来源要求：sceneId 必须来自 query_scene_list 的返回结果。"
-                    + "禁止事项：禁止编造场景 ID，禁止使用示例值。",
+            description = """
+                    执行 HDL 场景。传入场景 ID，触发该场景包含的所有设备控制动作（如'回家模式'会自动开关多个设备）。
+                    使用场景：用户说'启动回家场景'、'执行晚安模式'、'打开离家场景'时调用。
+                    参数来源要求：sceneId 必须来自 query_scene_list 的返回结果。
+                    禁止事项：禁止编造场景 ID，禁止使用示例值。
+                    """,
             concurrencySafe = false)
     public ToolResultVO executeScene(
             @ToolParam(name = "sceneId", required = true,
@@ -127,11 +145,13 @@ public class SceneTool extends AbstractTool {
      * @return 工具结果 VO
      */
 //    @Tool(name = "create_scene",
-//            description = "创建 HDL 场景。需先调用 query_device_list 获取设备 sid/spk/gatewayId，然后传入场景名和设备动作列表。"
-//                    + "设备动作通过 userInput 字段描述（如'RGB开绿色亮度98'），工具内部自动解析为标准控制属性，无需 LLM 输出属性 key。"
-//                    + "使用场景：用户说'创建一个回家场景 RGB 开绿色亮度 98'时调用。"
-//                    + "参数来源要求：gatewayId、sid、spk 必须来自 query_device_list 返回结果。"
-//                    + "禁止事项：禁止编造网关 ID、设备 sid 或种类码；禁止使用示例值。",
+//            description = """
+//                    创建 HDL 场景。需先调用 query_device_list 获取设备 sid/spk/gatewayId，然后传入场景名和设备动作列表。
+//                    设备动作通过 userInput 字段描述（如'RGB开绿色亮度98'），工具内部自动解析为标准控制属性，无需 LLM 输出属性 key。
+//                    使用场景：用户说'创建一个回家场景 RGB 开绿色亮度 98'时调用。
+//                    参数来源要求：gatewayId、sid、spk 必须来自 query_device_list 返回结果。
+//                    禁止事项：禁止编造网关 ID、设备 sid 或种类码；禁止使用示例值。
+//                    """,
 //            concurrencySafe = false)
     public ToolResultVO createScene(
             @ToolParam(name = "sceneName", required = true,
