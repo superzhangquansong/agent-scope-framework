@@ -892,6 +892,20 @@ export default function App() {
     handleSendRef.current = (text: string) => { handleSend(text); };
   }, [handleSend]);
 
+  // ===== 场景推荐「创建此场景」按钮事件监听 =====
+  // SceneRecommendPage 点击创建按钮后派发 hdl-scene-recommend-create 事件，
+  // 此处监听并调用 handleSend 发送“创建{场景名}”，由 LLM 调用 create_scene_from_template 创建场景。
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const sceneName = (e as CustomEvent<{ sceneName?: string }>).detail?.sceneName;
+      if (sceneName) {
+        handleSendRef.current(`创建${sceneName}`);
+      }
+    };
+    window.addEventListener('hdl-scene-recommend-create', handler);
+    return () => window.removeEventListener('hdl-scene-recommend-create', handler);
+  }, []);
+
   // ===== 登录成功回调：关闭弹窗 + 刷新状态 + 重发待发消息（参照 hdl-agent） =====
   const handleLoginSuccess = async (_loginName: string) => {
     setLoginOpen(false);

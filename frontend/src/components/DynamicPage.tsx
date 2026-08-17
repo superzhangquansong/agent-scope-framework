@@ -8,6 +8,7 @@ import HomeListPage from './HomeListPage';
 import SceneListPage from './SceneListPage';
 import SceneDetailPage from './SceneDetailPage';
 import SceneCreateResultPage from './SceneCreateResultPage';
+import SceneRecommendPage from './SceneRecommendPage';
 import SceneExecuteResultPage from './SceneExecuteResultPage';
 import SceneDeleteResultPage from './SceneDeleteResultPage';
 import CartListPage from './CartListPage';
@@ -43,6 +44,7 @@ export const ROUTE_PATH = {
   SCENE_CREATE: 'scene-create',
   SCENE_EXECUTE: 'scene-execute',
   SCENE_DELETE: 'scene-delete',
+  SCENE_RECOMMEND: 'scene-recommend',
   CART_LIST: 'cart-list',
   CART_ADD: 'cart-add',
   CART_CHECKOUT: 'cart-checkout',
@@ -107,6 +109,9 @@ export default function DynamicPage({ path, data }: { path: string; data: Record
       break;
     case ROUTE_PATH.SCENE_DELETE:
       content = <SceneDeleteResultPage data={data} />;
+      break;
+    case ROUTE_PATH.SCENE_RECOMMEND:
+      content = <SceneRecommendPage data={data} />;
       break;
     case ROUTE_PATH.CART_LIST:
       content = <CartListPage data={data} />;

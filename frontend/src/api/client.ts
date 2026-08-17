@@ -914,6 +914,49 @@ export async function getSceneList(signal?: AbortSignal): Promise<ApiResult<{ to
   return postJson<{ total: number; scenes: SceneItem[] }>(API_PATH.SCENE_LIST, {}, signal);
 }
 
+// ===== 场景推荐 =====
+
+/** 场景推荐方案中的匹配设备（对应后端 SceneRecommendVO.MatchedDevice） */
+export interface SceneRecommendMatchedDevice {
+  deviceId?: string;
+  name?: string;
+  spk?: string;
+  gatewayId?: string;
+}
+
+/** 场景推荐方案中的属性详情（对应后端 SceneRecommendVO.AttributeDetail） */
+export interface SceneRecommendAttribute {
+  key?: string;
+  value?: unknown;
+  desc?: string;
+}
+
+/** 场景推荐方案中的设备动作（对应后端 SceneRecommendVO.DeviceActionDetail） */
+export interface SceneRecommendDeviceAction {
+  deviceName?: string;
+  spk?: string;
+  attributes?: SceneRecommendAttribute[];
+  actionSummary?: string;
+}
+
+/** 场景推荐方案（对应后端 SceneRecommendVO） */
+export interface SceneRecommendItem {
+  /** 模板编码（确认后用于创建场景） */
+  templateCode?: string;
+  /** 场景名称 */
+  sceneName?: string;
+  /** 场景效果描述 */
+  description?: string;
+  /** 前端图标标识 */
+  icon?: string;
+  /** 匹配的设备列表 */
+  matchedDevices?: SceneRecommendMatchedDevice[];
+  /** 每个设备的具体动作 */
+  deviceActions?: SceneRecommendDeviceAction[];
+  /** 推荐分数 */
+  score?: number;
+}
+
 /** 执行场景 */
 export async function executeScene(req: { sceneId: string }, signal?: AbortSignal) {
   return postJson<{ sceneId?: string; sceneName?: string; success?: boolean }>(

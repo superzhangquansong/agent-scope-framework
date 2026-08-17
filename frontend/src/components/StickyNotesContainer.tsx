@@ -170,6 +170,7 @@ const ROUTE_TITLE_MAP: Record<string, string> = {
   [ROUTE_PATH.SCENE_CREATE]: '场景创建',
   [ROUTE_PATH.SCENE_EXECUTE]: '场景执行',
   [ROUTE_PATH.SCENE_DELETE]: '场景删除',
+  [ROUTE_PATH.SCENE_RECOMMEND]: '场景推荐',
   [ROUTE_PATH.CART_LIST]: '购物车',
   [ROUTE_PATH.CART_ADD]: '加入购物车',
   [ROUTE_PATH.CART_CHECKOUT]: '结算',

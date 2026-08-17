@@ -12,7 +12,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 场景推荐 LLM 工具。
@@ -37,6 +39,16 @@ import java.util.List;
 @Component
 @RequiredArgsConstructor
 public class SceneRecommendTool extends AbstractTool {
+
+    /**
+     * 场景推荐结果路由（前端 SceneRecommendPage 据此渲染推荐卡片）
+     */
+    private static final String ROUTE_SCENE_RECOMMEND = "/scene/recommend";
+
+    /**
+     * 场景推荐成功播报文本
+     */
+    private static final String BROADCAST_SCENE_RECOMMEND = "为您推荐以下场景方案";
 
     /**
      * 场景推荐引擎
@@ -99,6 +111,10 @@ public class SceneRecommendTool extends AbstractTool {
         }
         displayText.append("\n请将以上方案展示给用户，询问用户要创建哪个场景。用户确认后调用 create_scene_from_template 创建。");
 
-        return ToolResultVO.success(displayText.toString(), recommends);
+        // 包装为前端 SceneRecommendPage 期望的 {recommends: [...]} 结构，并携带路由
+        Map<String, Object> resultData = new LinkedHashMap<>();
+        resultData.put("recommends", recommends);
+        return ToolResultVO.success(displayText.toString(), resultData,
+                ROUTE_SCENE_RECOMMEND, BROADCAST_SCENE_RECOMMEND);
     }
 }
