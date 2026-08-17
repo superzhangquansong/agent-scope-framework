@@ -122,7 +122,7 @@ export default function FloorPlanPage({ data }: RoutePageProps) {
         quantity: product.quantity,
         erpNo: product.erpNo,
       });
-      if (result.code === 200) {
+      if (result.success) {
         setAddedIds(prev => new Set(prev).add(product.productId + '-' + product.skuId));
       } else {
         alert(`加购失败: ${result.message}`);
@@ -155,7 +155,7 @@ export default function FloorPlanPage({ data }: RoutePageProps) {
           quantity: product.quantity,
           erpNo: product.erpNo,
         });
-        if (result.code === 200) {
+        if (result.success) {
           setAddedIds(prev => new Set(prev).add(product.productId + '-' + product.skuId));
         } else {
           failed.push(product.productName || product.productId);

@@ -78,11 +78,7 @@ public class SceneController {
         if (ctx == null) return ToolResultVO.failure(401, "未登录或会话已过期");
         String sceneId = (String) body.get("sceneId");
         if (sceneId == null || sceneId.isBlank()) return ToolResultVO.failure(400, "缺少 sceneId");
-        // HDL 场景删除：通过场景ID删除
-        Map<String, Object> deleteBody = new java.util.LinkedHashMap<>();
-        deleteBody.put("sceneId", sceneId);
-        deleteBody.put("homeId", ctx.getHouseId());
-        return hdlApiPort.createScene(deleteBody, ctx); // 复用 createScene 作为通用 HDL 调用
+        return hdlApiPort.deleteScene(sceneId, ctx);
     }
 
     @PostMapping("/create")
@@ -92,7 +88,7 @@ public class SceneController {
         if (ctx == null) return ToolResultVO.failure(401, "未登录或会话已过期");
         String sceneName = (String) body.get("sceneName");
         if (sceneName == null || sceneName.isBlank()) return ToolResultVO.failure(400, "缺少 sceneName");
-        return hdlApiPort.createScene(body, ctx);
+        return hdlApiPort.createScene(buildSceneBody(body, false), ctx);
     }
 
     @PostMapping("/update")
@@ -100,6 +96,43 @@ public class SceneController {
                                     @RequestBody Map<String, Object> body) {
         SessionContext ctx = resolveContext(sessionToken);
         if (ctx == null) return ToolResultVO.failure(401, "未登录或会话已过期");
-        return hdlApiPort.createScene(body, ctx); // HDL scene/update 走相同的 create 逻辑
+        return hdlApiPort.updateScene(buildSceneBody(body, true), ctx);
+    }
+
+    /**
+     * 将前端 CreateSceneRequest（顶层 sceneName/functions/...）转换为 HDL 场景报文。
+     *
+     * <p>HDL scene/add、scene/update 均要求顶层 {@code scenes} 数组包裹场景对象，
+     * 每个场景对象含 name/userSceneId、gatewayId、collect、executePush、functions 字段。
+     * 前端直传的是扁平结构，此处统一转换为 HDL 要求的嵌套结构。</p>
+     *
+     * @param body      前端请求体（含 sceneName/sceneId/gatewayId/collect/executePush/functions）
+     * @param forUpdate true 表示更新场景（场景对象含 userSceneId），false 表示创建
+     * @return HDL scenes 数组结构 {@code {scenes: [{...}]}}
+     */
+    private Map<String, Object> buildSceneBody(Map<String, Object> body, boolean forUpdate) {
+        Map<String, Object> scene = new java.util.LinkedHashMap<>();
+        if (forUpdate) {
+            Object sceneId = body.get("sceneId");
+            if (sceneId != null) {
+                scene.put("userSceneId", sceneId);
+            }
+        }
+        scene.put("name", body.get("sceneName"));
+        Object gatewayId = body.get("gatewayId");
+        if (gatewayId != null) {
+            scene.put("gatewayId", gatewayId);
+        }
+        Object collect = body.get("collect");
+        scene.put("collect", Boolean.TRUE.equals(collect) ? 1 : 0);
+        scene.put("executePush", body.get("executePush") != null ? body.get("executePush") : false);
+        scene.put("functions", body.get("functions"));
+
+        List<Map<String, Object>> scenes = new java.util.ArrayList<>(1);
+        scenes.add(scene);
+
+        Map<String, Object> result = new java.util.LinkedHashMap<>(1);
+        result.put("scenes", scenes);
+        return result;
     }
 }

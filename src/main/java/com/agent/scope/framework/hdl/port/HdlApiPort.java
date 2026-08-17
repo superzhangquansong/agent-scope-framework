@@ -117,6 +117,24 @@ public interface HdlApiPort {
     ToolResultVO createScene(Map<String, Object> body, SessionContext sessionContext);
 
     /**
+     * 更新场景。
+     *
+     * @param body           HDL 场景更新报文（scenes 数组结构，含 userSceneId）
+     * @param sessionContext 会话上下文
+     * @return 工具结果 VO
+     */
+    ToolResultVO updateScene(Map<String, Object> body, SessionContext sessionContext);
+
+    /**
+     * 删除场景。
+     *
+     * @param sceneId        场景 ID（userSceneId）
+     * @param sessionContext 会话上下文
+     * @return 工具结果 VO
+     */
+    ToolResultVO deleteScene(String sceneId, SessionContext sessionContext);
+
+    /**
      * 查询产品详情。
      *
      * @param productId      产品 ID

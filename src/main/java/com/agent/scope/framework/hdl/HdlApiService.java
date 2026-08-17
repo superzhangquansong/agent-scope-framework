@@ -65,6 +65,14 @@ public class HdlApiService implements HdlApiPort {
      */
     private static final String ROUTE_SCENE_CREATE = "/scene/create";
     /**
+     * 场景更新路由
+     */
+    private static final String ROUTE_SCENE_UPDATE = "/scene/update";
+    /**
+     * 场景删除路由
+     */
+    private static final String ROUTE_SCENE_DELETE = "/scene/delete";
+    /**
      * 产品详情路由
      */
     private static final String ROUTE_PRODUCT_DETAIL = "/product/detail";
@@ -131,6 +139,14 @@ public class HdlApiService implements HdlApiPort {
      * 场景创建播报
      */
     private static final String BROADCAST_SCENE_CREATE = "场景创建成功";
+    /**
+     * 场景更新播报
+     */
+    private static final String BROADCAST_SCENE_UPDATE = "场景更新成功";
+    /**
+     * 场景删除播报
+     */
+    private static final String BROADCAST_SCENE_DELETE = "场景删除成功";
     /**
      * 产品详情查询播报
      */
@@ -627,6 +643,59 @@ public class HdlApiService implements HdlApiPort {
                     ROUTE_SCENE_CREATE, BROADCAST_SCENE_CREATE);
         } catch (Exception e) {
             log.error("[HdlApiService] 创建场景异常", e);
+            return ToolResultVO.failure(CODE_OPERATION_FAILED, "操作失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 更新场景。
+     *
+     * <p>向 HDL 下发场景更新请求，body 为 HDL scene/update 报文结构：
+     * {@code {scenes: [{userSceneId, name, gatewayId, collect, executePush, functions}]}}。
+     * body 由 SceneController 按此结构构建。</p>
+     *
+     * @param body           场景更新参数（scenes 数组结构，含 userSceneId）
+     * @param sessionContext 会话上下文
+     * @return 工具结果 VO
+     */
+    @Override
+    public ToolResultVO updateScene(Map<String, Object> body, SessionContext sessionContext) {
+        try {
+            if (body == null) {
+                body = new LinkedHashMap<>();
+            }
+
+            HdlResponse resp = hdlApiClient.post(HdlApiConstants.SCENE_UPDATE, body, true,
+                    sessionContext.getAccessToken());
+            return convertHdlResponse(resp, "场景更新成功",
+                    ROUTE_SCENE_UPDATE, BROADCAST_SCENE_UPDATE);
+        } catch (Exception e) {
+            log.error("[HdlApiService] 更新场景异常", e);
+            return ToolResultVO.failure(CODE_OPERATION_FAILED, "操作失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 删除场景。
+     *
+     * <p>向 HDL 下发场景删除请求，报文为 {@code {userSceneIds: [sceneId]}}。</p>
+     *
+     * @param sceneId        场景 ID（userSceneId）
+     * @param sessionContext 会话上下文
+     * @return 工具结果 VO
+     */
+    @Override
+    public ToolResultVO deleteScene(String sceneId, SessionContext sessionContext) {
+        try {
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("userSceneIds", List.of(sceneId));
+
+            HdlResponse resp = hdlApiClient.post(HdlApiConstants.SCENE_DELETE, data, true,
+                    sessionContext.getAccessToken());
+            return convertHdlResponse(resp, "场景删除成功",
+                    ROUTE_SCENE_DELETE, BROADCAST_SCENE_DELETE);
+        } catch (Exception e) {
+            log.error("[HdlApiService] 删除场景异常: sceneId={}", sceneId, e);
             return ToolResultVO.failure(CODE_OPERATION_FAILED, "操作失败: " + e.getMessage());
         }
     }

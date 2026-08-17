@@ -35,15 +35,19 @@ import static com.agent.scope.framework.utils.ChatUtils.extractAccessToken;
  */
 @Slf4j
 @RestController
-    @RequestMapping("/api/v1/chat")
+@RequestMapping("/api/v1/chat")
 @RequiredArgsConstructor
 @Validated
 public class ChatController {
 
-    /** SSE 并发连接数上限 */
+    /**
+     * SSE 并发连接数上限
+     */
     private static final int MAX_CONCURRENT_SSE = 500;
 
-    /** SSE 并发连接信号量 */
+    /**
+     * SSE 并发连接信号量
+     */
     private static final Semaphore SSE_SEMAPHORE = new Semaphore(MAX_CONCURRENT_SSE);
 
     private final ChatService chatService;
