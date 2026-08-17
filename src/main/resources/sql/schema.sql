@@ -127,3 +127,34 @@ CREATE TABLE IF NOT EXISTS `task_queue_record` (
     KEY `idx_session_id` (`session_id`),
     KEY `idx_status`     (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='任务队列记录表';
+
+-- -------------------------------------------------------------------
+-- 7. 场景模板表（场景推荐引擎：预置通用场景模板，按用户设备组合匹配推荐）
+-- -------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `scene_template` (
+    `id`             BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    `template_code`  VARCHAR(64)  NOT NULL COMMENT '模板编码（如 movie_mode）',
+    `scene_name`     VARCHAR(128) NOT NULL COMMENT '场景名称（如 观影模式）',
+    `description`    VARCHAR(512) NOT NULL COMMENT '场景效果描述（展示给用户看的效果说明）',
+    `icon`           VARCHAR(64)           DEFAULT NULL COMMENT '前端图标标识',
+    `required_spks`  VARCHAR(512) NOT NULL COMMENT '所需设备种类码JSON数组，如 ["light.rgbcw","hvac.ac"]，用户设备必须全覆盖才能匹配',
+    `optional_spks`  VARCHAR(512)          DEFAULT NULL COMMENT '可选设备种类码JSON数组，部分匹配也纳入推荐',
+    `device_actions` TEXT         NOT NULL COMMENT '设备动作JSON，key=spk，value=[{key,value}]属性列表',
+    `time_slots`     VARCHAR(128)          DEFAULT NULL COMMENT '适用时段（如 evening/night/morning），用于时段加权匹配',
+    `priority`       INT                   DEFAULT 50   COMMENT '优先级基础分（越小越高，范围1-100）',
+    `enabled`        TINYINT               DEFAULT 1    COMMENT '是否启用：0禁用1启用',
+    `create_time`    DATETIME     NOT NULL COMMENT '创建时间',
+    `update_time`    DATETIME     NOT NULL COMMENT '更新时间',
+    `deleted`        TINYINT               DEFAULT 0    COMMENT '逻辑删除：0未删1已删',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_template_code` (`template_code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='场景模板表';
+
+-- 预置场景模板数据（冷启动即用，后续可通过 Nacos 热更新覆盖）
+INSERT INTO `scene_template` (`template_code`, `scene_name`, `description`, `icon`, `required_spks`, `optional_spks`, `device_actions`, `time_slots`, `priority`, `enabled`, `create_time`, `update_time`) VALUES
+('movie_mode', '观影模式', '灯光调暗至20%暖色温，窗帘关闭，空调开启26度制冷，营造沉浸式观影氛围', 'movie', '["light.rgbcw"]', '["curtain.roller","hvac.ac","light.cct"]', '{"light.rgbcw":[{"key":"on_off","value":"on"},{"key":"brightness","value":20},{"key":"cct","value":3000}],"curtain.roller":[{"key":"on_off","value":"off"}],"hvac.ac":[{"key":"on_off","value":"on"},{"key":"set_temp","value":26},{"key":"mode","value":"cool"}]}', 'evening', 20, 1, NOW(), NOW()),
+('sleep_mode', '睡眠模式', '关闭所有灯光，空调开启26度睡眠模式，窗帘关闭，营造安静舒适的睡眠环境', 'sleep', '["light.rgbcw","hvac.ac"]', '["curtain.roller","light.switch","light.dimming"]', '{"light.rgbcw":[{"key":"on_off","value":"off"}],"light.switch":[{"key":"on_off","value":"off"}],"light.dimming":[{"key":"on_off","value":"off"}],"hvac.ac":[{"key":"on_off","value":"on"},{"key":"set_temp","value":26},{"key":"mode","value":"sleep"}],"curtain.roller":[{"key":"on_off","value":"off"}]}', 'night', 15, 1, NOW(), NOW()),
+('guest_mode', '会客模式', '灯光调至80%白光，窗帘打开，空调开启制冷，营造明亮舒适的会客氛围', 'guest', '["light.rgbcw"]', '["curtain.roller","hvac.ac","light.cct"]', '{"light.rgbcw":[{"key":"on_off","value":"on"},{"key":"brightness","value":80},{"key":"cct","value":5000}],"curtain.roller":[{"key":"on_off","value":"on"}],"hvac.ac":[{"key":"on_off","value":"on"},{"key":"set_temp","value":24},{"key":"mode","value":"cool"}]}', 'daytime', 40, 1, NOW(), NOW()),
+('reading_mode', '阅读模式', '灯光调至100%冷白光，提供明亮护眼的阅读照明', 'reading', '["light.cct"]', '["light.rgbcw","light.dimming"]', '{"light.cct":[{"key":"on_off","value":"on"},{"key":"brightness","value":100},{"key":"cct","value":5500}],"light.rgbcw":[{"key":"on_off","value":"on"},{"key":"brightness","value":100},{"key":"cct","value":5500}],"light.dimming":[{"key":"on_off","value":"on"},{"key":"brightness","value":100}]}', 'evening', 35, 1, NOW(), NOW()),
+('wake_up_mode', '起床模式', '窗帘打开50%，灯光渐亮，空调关闭，模拟自然唤醒', 'sunrise', '["curtain.roller"]', '["light.dimming","light.rgbcw","hvac.ac"]', '{"curtain.roller":[{"key":"on_off","value":"on"},{"key":"position","value":50}],"light.dimming":[{"key":"on_off","value":"on"},{"key":"brightness","value":60}],"light.rgbcw":[{"key":"on_off","value":"on"},{"key":"brightness","value":60},{"key":"cct","value":4000}],"hvac.ac":[{"key":"on_off","value":"off"}]}', 'morning', 50, 1, NOW(), NOW()),
+('leave_home', '离家模式', '关闭所有灯光和空调，窗帘关闭，确保家中设备安全关闭', 'leave', '["light.switch"]', '["hvac.ac","curtain.roller","light.rgbcw","light.dimming"]', '{"light.switch":[{"key":"on_off","value":"off"}],"light.rgbcw":[{"key":"on_off","value":"off"}],"light.dimming":[{"key":"on_off","value":"off"}],"hvac.ac":[{"key":"on_off","value":"off"}],"curtain.roller":[{"key":"on_off","value":"off"}]}', 'daytime', 30, 1, NOW(), NOW());

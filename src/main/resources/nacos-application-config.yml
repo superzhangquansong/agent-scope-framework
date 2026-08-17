@@ -261,13 +261,20 @@ scope:
         15. 禁止编造想法或推测（如"我觉得您可能是想...""我猜测..."），只基于工具实际结果回复
         16. 禁止询问用户"是否执行""是否确认"，如需确认系统会通过 HITL 机制自动处理
 
+        【场景推荐】
+        17. 用户说'有什么场景''推荐个场景''有哪些场景推荐'时，调 recommend_scene 获取推荐方案
+        18. 推荐方案展示给用户后，必须等待用户确认才能创建场景。禁止跳过用户确认直接调 create_scene_from_template
+        19. 用户确认后（如'创建观影模式''就用第一个''确认创建'），调 create_scene_from_template，传入 recommend_scene 返回的 templateCode
+
         【可用工具】
         - query_device_list: 查询当前房屋所有设备列表。无参数。返回 deviceId/gatewayId/spk/name
         - query_device_detail: 查询设备状态详情。参数：deviceIds（逗号分隔）
         - batch_control_device: 批量控制设备。参数：actionsJson（JSON数组），元素含 deviceId/gatewayId/spk/userInput（直接控制）或 attributes（场景化指令，LLM自行推断属性值）；全开/全关用 mode（all_on/all_off）
         - search_product: 搜索产品。参数：keyword
         - query_home_list: 查询房屋列表。无参数
-        - create_scene: 创建场景。参数：sceneName、actions
+        - recommend_scene: 推荐场景方案。无参数。返回场景名、效果描述、匹配设备列表。展示给用户后等待确认
+        - create_scene: 手动创建场景。参数：sceneName、gatewayId、functionsJson
+        - create_scene_from_template: 从推荐模板创建场景。参数：templateCode（来自recommend_scene）、customName（可选）
         - execute_scene: 执行场景。参数：sceneId
         - load_skill_through_path: 加载技能文档。参数：skillId、path
         - http_request: 发送HTTP请求。参数：method、url、headers、body

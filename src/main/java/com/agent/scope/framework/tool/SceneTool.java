@@ -1,9 +1,11 @@
 package com.agent.scope.framework.tool;
 
 import com.agent.scope.framework.context.SessionContext;
+import com.agent.scope.framework.entity.SceneTemplate;
 import com.agent.scope.framework.hdl.port.AttributeMutexRules;
 import com.agent.scope.framework.hdl.port.HdlApiPort;
 import com.agent.scope.framework.hdl.port.SpkAttributeResolver;
+import com.agent.scope.framework.service.SceneTemplateService;
 import com.agent.scope.framework.vo.ToolResultVO;
 import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONArray;
@@ -49,6 +51,11 @@ public class SceneTool extends AbstractTool {
      * 属性互斥规则端口（Nacos 热重载）
      */
     private final AttributeMutexRules attributeMutexRules;
+
+    /**
+     * 场景模板服务（用于 create_scene_from_template 加载模板）
+     */
+    private final SceneTemplateService sceneTemplateService;
 
     /**
      * colorful 属性名
@@ -144,15 +151,15 @@ public class SceneTool extends AbstractTool {
      * @param runtimeContext 运行时上下文（自动注入）
      * @return 工具结果 VO
      */
-//    @Tool(name = "create_scene",
-//            description = """
-//                    创建 HDL 场景。需先调用 query_device_list 获取设备 sid/spk/gatewayId，然后传入场景名和设备动作列表。
-//                    设备动作通过 userInput 字段描述（如'RGB开绿色亮度98'），工具内部自动解析为标准控制属性，无需 LLM 输出属性 key。
-//                    使用场景：用户说'创建一个回家场景 RGB 开绿色亮度 98'时调用。
-//                    参数来源要求：gatewayId、sid、spk 必须来自 query_device_list 返回结果。
-//                    禁止事项：禁止编造网关 ID、设备 sid 或种类码；禁止使用示例值。
-//                    """,
-//            concurrencySafe = false)
+    @Tool(name = "create_scene",
+            description = """
+                    创建 HDL 场景（手动指定设备动作）。需先调用 query_device_list 获取设备 sid/spk/gatewayId，然后传入场景名和设备动作列表。
+                    设备动作通过 userInput 字段描述（如'RGB开绿色亮度98'），工具内部自动解析为标准控制属性，无需 LLM 输出属性 key。
+                    使用场景：用户说'创建一个回家场景 RGB 开绿色亮度 98'时调用。
+                    参数来源要求：gatewayId、sid、spk 必须来自 query_device_list 返回结果。
+                    禁止事项：禁止编造网关 ID、设备 sid 或种类码；禁止使用示例值。
+                    """,
+            concurrencySafe = false)
     public ToolResultVO createScene(
             @ToolParam(name = "sceneName", required = true,
                     description = "场景名称。示例：回家场景、晚安场景。从用户输入提取，通常是创建/新建之后、场景之前的文字") String sceneName,
@@ -247,6 +254,139 @@ public class SceneTool extends AbstractTool {
         body.put("executePush", executePush != null ? executePush : false);
 
         // 4. 调用 HDL API 创建场景
+        return hdlApiPort.createScene(body, sessionContext);
+    }
+
+    /**
+     * 从推荐模板创建场景（用户确认推荐方案后调用）。
+     *
+     * <p>用户通过 recommend_scene 获取推荐方案后，确认某个方案时调用此工具。
+     * 工具内部根据 templateCode 加载模板的 device_actions，结合用户实际设备列表
+     * （从 HDL API 查询获取 sid），构建场景创建请求并提交到 HDL 平台。</p>
+     *
+     * <p>与 create_scene 的区别：create_scene 需要 LLM 手动构造 functionsJson，
+     * 而 create_scene_from_template 只需 templateCode，工具内部自动完成设备匹配和动作构建。</p>
+     *
+     * @param templateCode   模板编码（来自 recommend_scene 返回结果）
+     * @param customName     自定义场景名称（可选，留空时使用模板默认名称）
+     * @param runtimeContext 运行时上下文（自动注入）
+     * @return 工具结果 VO
+     */
+    @Tool(name = "create_scene_from_template",
+            description = """
+                    从推荐模板创建场景。用户确认 recommend_scene 返回的推荐方案后调用此工具。
+                    只需传入 templateCode（来自 recommend_scene 返回的 templateCode 字段），工具内部自动匹配设备并创建场景。
+                    使用场景：用户说'创建观影模式''就用第一个方案''确认创建'时调用。
+                    参数来源要求：templateCode 必须来自 recommend_scene 返回结果。
+                    禁止事项：禁止编造 templateCode；禁止在用户未确认前调用此工具。
+                    """,
+            concurrencySafe = false)
+    public ToolResultVO createSceneFromTemplate(
+            @ToolParam(name = "templateCode", required = true,
+                    description = "模板编码。必须来自 recommend_scene 返回结果的 templateCode 字段，如 movie_mode") String templateCode,
+            @ToolParam(name = "customName", required = false,
+                    description = "自定义场景名称。可选，留空时使用模板默认名称（如观影模式）") String customName,
+            RuntimeContext runtimeContext) {
+
+        SessionContext sessionContext = resolveSessionContext(runtimeContext);
+        log.info("[SceneTool] 从模板创建场景: templateCode={}, customName={}, userId={}",
+                templateCode, customName, sessionContext.getUserId());
+
+        // 1. 加载场景模板
+        SceneTemplate template = sceneTemplateService.getAllEnabledTemplates().stream()
+                .filter(t -> templateCode.equals(t.getTemplateCode()))
+                .findFirst()
+                .orElse(null);
+        if (template == null) {
+            return ToolResultVO.failure(404, "场景模板不存在: " + templateCode);
+        }
+
+        // 2. 查询用户设备原始列表（需要 sid 字段，DeviceBrief 缓存中没有 sid）
+        List<Map<String, Object>> rawDevices = hdlApiPort.queryDeviceListRaw(sessionContext);
+        if (rawDevices == null || rawDevices.isEmpty()) {
+            return ToolResultVO.failure(404, "设备列表为空，无法创建场景");
+        }
+
+        // 3. 解析模板的 device_actions
+        JSONObject actionsJson = JSON.parseObject(template.getDeviceActions());
+
+        // 4. 匹配用户设备并构建 functions 列表
+        List<String> requiredSpks = sceneTemplateService.parseSpkArray(template.getRequiredSpks());
+        List<String> optionalSpks = sceneTemplateService.parseSpkArray(template.getOptionalSpks());
+
+        List<Map<String, Object>> functions = new ArrayList<>();
+        String gatewayId = null;
+
+        for (Map<String, Object> device : rawDevices) {
+            String deviceSpk = (String) device.get("spk");
+            String deviceSid = (String) device.get("sid");
+            String deviceGatewayId = (String) device.get("gatewayId");
+
+            // 仅处理模板中定义了动作的 spk，且属于 required 或 optional
+            if (!actionsJson.containsKey(deviceSpk)) {
+                continue;
+            }
+            if (!requiredSpks.contains(deviceSpk) && !optionalSpks.contains(deviceSpk)) {
+                continue;
+            }
+
+            if (deviceSid == null || deviceSid.isBlank()) {
+                log.warn("[SceneTool] 设备缺少 sid，跳过: name={}, spk={}",
+                        device.get("name"), deviceSpk);
+                continue;
+            }
+
+            // 取网关 ID（以第一个匹配设备的网关为准）
+            if (gatewayId == null && deviceGatewayId != null) {
+                gatewayId = deviceGatewayId;
+            }
+
+            // 构建设备动作的 status 列表
+            JSONArray attrsArray = actionsJson.getJSONArray(deviceSpk);
+            List<Map<String, Object>> status = new ArrayList<>(attrsArray.size());
+            for (int i = 0; i < attrsArray.size(); i++) {
+                JSONObject attrObj = attrsArray.getJSONObject(i);
+                Map<String, Object> attr = new LinkedHashMap<>(2);
+                attr.put("key", attrObj.getString("key"));
+                attr.put("value", attrObj.get("value"));
+                status.add(attr);
+            }
+
+            // 构建 function
+            Map<String, Object> function = new LinkedHashMap<>(4);
+            function.put("sid", deviceSid);
+            function.put("spk", deviceSpk);
+            function.put("status", status);
+            function.put("delaySeconds", DEFAULT_DELAY_SECONDS);
+            functions.add(function);
+
+            log.info("[SceneTool] 模板场景设备匹配: name={}, spk={}, sid={}, attrs={}",
+                    device.get("name"), deviceSpk, deviceSid, status);
+        }
+
+        if (functions.isEmpty()) {
+            return ToolResultVO.failure(400, "用户设备与模板不匹配，无法创建场景");
+        }
+        if (gatewayId == null) {
+            return ToolResultVO.failure(400, "无法获取网关 ID，请确认设备列表包含 gatewayId 字段");
+        }
+
+        // 5. 构建场景创建请求体
+        String sceneName = (customName != null && !customName.isBlank())
+                ? customName : template.getSceneName();
+
+        Map<String, Object> body = new LinkedHashMap<>(6);
+        body.put("sceneName", sceneName);
+        body.put("gatewayId", gatewayId);
+        body.put("functions", functions);
+        body.put("collect", false);
+        body.put("delaySeconds", DEFAULT_DELAY_SECONDS);
+        body.put("executePush", false);
+
+        log.info("[SceneTool] 模板场景创建请求: sceneName={}, templateCode={}, functions={}",
+                sceneName, templateCode, functions.size());
+
+        // 6. 调用 HDL API 创建场景
         return hdlApiPort.createScene(body, sessionContext);
     }
 

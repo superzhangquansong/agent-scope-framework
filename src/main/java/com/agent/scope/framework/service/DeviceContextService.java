@@ -107,6 +107,34 @@ public class DeviceContextService {
     }
 
     /**
+     * 获取缓存的设备精简信息列表。
+     * <p>
+     * 从 Redis 读取缓存的设备列表，返回 DeviceBrief 对象列表。
+     * 供场景推荐引擎等需要设备结构化数据的组件使用。缓存未命中时返回空列表。
+     * </p>
+     *
+     * @param houseId 房屋 ID
+     * @return 设备精简信息列表，缓存未命中返回空列表
+     */
+    public List<DeviceBrief> getCachedDeviceBriefs(String houseId) {
+        if (houseId == null) {
+            return List.of();
+        }
+        try {
+            String key = CACHE_KEY_PREFIX + houseId;
+            Object cached = redisTemplate.opsForValue().get(key);
+            if (cached == null) {
+                return List.of();
+            }
+            List<DeviceBrief> briefs = JSON.parseArray(cached.toString(), DeviceBrief.class);
+            return briefs != null ? briefs : List.of();
+        } catch (Exception e) {
+            log.debug("[DeviceContext] 读取设备缓存列表失败: houseId={}, error={}", houseId, e.getMessage());
+            return List.of();
+        }
+    }
+
+    /**
      * 从原始设备列表数据中提取精简字段。
      * <p>
      * HDL API 返回的设备对象包含大量字段（attributes、status、roomInfos 等），
