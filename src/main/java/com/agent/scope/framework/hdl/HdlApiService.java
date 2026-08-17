@@ -10,11 +10,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -40,79 +36,147 @@ public class HdlApiService implements HdlApiPort {
 
     // ===== 前端路由路径常量（用于 ToolResultVO.routePath） =====
 
-    /** 房屋列表路由 */
+    /**
+     * 房屋列表路由
+     */
     private static final String ROUTE_HOME_LIST = "/home/list";
-    /** 设备列表路由 */
+    /**
+     * 设备列表路由
+     */
     private static final String ROUTE_DEVICE_LIST = "/device/list";
-    /** 设备详情路由 */
+    /**
+     * 设备详情路由
+     */
     private static final String ROUTE_DEVICE_DETAIL = "/device/detail";
-    /** 设备状态/控制路由 */
+    /**
+     * 设备状态/控制路由
+     */
     private static final String ROUTE_DEVICE_STATUS = "/device/status";
-    /** 场景列表路由 */
+    /**
+     * 场景列表路由
+     */
     private static final String ROUTE_SCENE_LIST = "/scene/list";
-    /** 场景执行路由 */
+    /**
+     * 场景执行路由
+     */
     private static final String ROUTE_SCENE_EXECUTE = "/scene/execute";
-    /** 场景创建路由 */
+    /**
+     * 场景创建路由
+     */
     private static final String ROUTE_SCENE_CREATE = "/scene/create";
-    /** 产品详情路由 */
+    /**
+     * 产品详情路由
+     */
     private static final String ROUTE_PRODUCT_DETAIL = "/product/detail";
-    /** 产品列表路由 */
+    /**
+     * 产品列表路由
+     */
     private static final String ROUTE_PRODUCT_LIST = "/product/list";
-    /** 加入购物车路由 */
+    /**
+     * 加入购物车路由
+     */
     private static final String ROUTE_CART_ADD = "/cart/add";
-    /** 购物车列表路由 */
+    /**
+     * 购物车列表路由
+     */
     private static final String ROUTE_CART_LIST = "/cart/list";
-    /** 知识库问答路由 */
+    /**
+     * 知识库问答路由
+     */
     private static final String ROUTE_QA_LIST = "/qa/list";
-    /** 储能电站列表路由 */
+    /**
+     * 储能电站列表路由
+     */
     private static final String ROUTE_ENERGY_STATION_LIST = "/energy/station/list";
-    /** 储能电站详情路由 */
+    /**
+     * 储能电站详情路由
+     */
     private static final String ROUTE_ENERGY_STATION_DETAIL = "/energy/station/detail";
-    /** 逆变器信息路由 */
+    /**
+     * 逆变器信息路由
+     */
     private static final String ROUTE_ENERGY_INVERTER = "/energy/inverter/info";
-    /** 知识库文档列表路由 */
+    /**
+     * 知识库文档列表路由
+     */
     private static final String ROUTE_KNOWLEDGE_LIST = "/knowledge/list";
 
     // ===== 成功播报文本常量（用于 ToolResultVO.broadcastText） =====
 
-    /** 房屋列表查询播报 */
+    /**
+     * 房屋列表查询播报
+     */
     private static final String BROADCAST_HOME_LIST = "已查询到您的房屋列表";
-    /** 设备列表查询播报 */
+    /**
+     * 设备列表查询播报
+     */
     private static final String BROADCAST_DEVICE_LIST = "已查询到您的设备列表";
-    /** 设备详情查询播报 */
+    /**
+     * 设备详情查询播报
+     */
     private static final String BROADCAST_DEVICE_DETAIL = "已查询到设备详情";
-    /** 设备控制播报 */
+    /**
+     * 设备控制播报
+     */
     private static final String BROADCAST_DEVICE_STATUS = "设备控制成功";
-    /** 场景列表查询播报 */
+    /**
+     * 场景列表查询播报
+     */
     private static final String BROADCAST_SCENE_LIST = "已查询到场景列表";
-    /** 场景执行播报 */
+    /**
+     * 场景执行播报
+     */
     private static final String BROADCAST_SCENE_EXECUTE = "场景执行成功";
-    /** 场景创建播报 */
+    /**
+     * 场景创建播报
+     */
     private static final String BROADCAST_SCENE_CREATE = "场景创建成功";
-    /** 产品详情查询播报 */
+    /**
+     * 产品详情查询播报
+     */
     private static final String BROADCAST_PRODUCT_DETAIL = "已查询到产品详情";
-    /** 产品列表查询播报 */
+    /**
+     * 产品列表查询播报
+     */
     private static final String BROADCAST_PRODUCT_LIST = "已查询到产品列表";
-    /** 加入购物车播报 */
+    /**
+     * 加入购物车播报
+     */
     private static final String BROADCAST_CART_ADD = "已加入购物车";
-    /** 购物车列表查询播报 */
+    /**
+     * 购物车列表查询播报
+     */
     private static final String BROADCAST_CART_LIST = "已查询到购物车列表";
-    /** 储能电站列表查询播报 */
+    /**
+     * 储能电站列表查询播报
+     */
     private static final String BROADCAST_ENERGY_STATION_LIST = "已查询到储能电站列表";
-    /** 储能电站详情查询播报 */
+    /**
+     * 储能电站详情查询播报
+     */
     private static final String BROADCAST_ENERGY_STATION_DETAIL = "已查询到储能电站详情";
-    /** 逆变器信息查询播报 */
+    /**
+     * 逆变器信息查询播报
+     */
     private static final String BROADCAST_ENERGY_INVERTER = "已查询到逆变器数据";
 
-    /** 操作失败错误码 */
+    /**
+     * 操作失败错误码
+     */
     private static final int CODE_OPERATION_FAILED = 500;
-    /** 功能未实现错误码 */
+    /**
+     * 功能未实现错误码
+     */
     private static final int CODE_NOT_IMPLEMENTED = 501;
 
-    /** HDL API HTTP 客户端 */
+    /**
+     * HDL API HTTP 客户端
+     */
     private final HdlApiClient hdlApiClient;
 
-    /** HDL API 配置属性 */
+    /**
+     * HDL API 配置属性
+     */
     private final HdlApiProperties hdlApiProperties;
 
 
@@ -282,7 +346,7 @@ public class HdlApiService implements HdlApiPort {
      */
     @Override
     public ToolResultVO controlDevice(String deviceId, String gatewayId, String spk,
-                                       String attributesJson, SessionContext sessionContext) {
+                                      String attributesJson, SessionContext sessionContext) {
         try {
             // 使用 fastjson2 解析控制属性 JSON 为 List<Map>
             List<Map<String, Object>> attributes = new ArrayList<>();
@@ -376,7 +440,7 @@ public class HdlApiService implements HdlApiPort {
      */
     @Override
     public ToolResultVO batchControlDevice(List<Map<String, Object>> actions, String gatewayId,
-                                            String deviceIdsForDetail, SessionContext sessionContext) {
+                                           String deviceIdsForDetail, SessionContext sessionContext) {
         try {
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("homeId", sessionContext.getHouseId());
@@ -503,23 +567,22 @@ public class HdlApiService implements HdlApiPort {
      *
      * <p>触发指定场景的执行，场景下的所有设备动作将一次性下发。</p>
      *
-     * @param sceneId        场景 ID
+     * @param sceneIds        场景 ID
      * @param sessionContext 会话上下文
      * @return 工具结果 VO
      */
     @Override
-    public ToolResultVO executeScene(String sceneId, SessionContext sessionContext) {
+    public ToolResultVO executeScene(List<String> sceneIds, SessionContext sessionContext) {
         try {
             Map<String, Object> data = new LinkedHashMap<>();
-            data.put("homeId", sessionContext.getHouseId());
-            data.put("sceneId", sceneId);
+            data.put("userSceneIds", sceneIds);
 
             HdlResponse resp = hdlApiClient.post(HdlApiConstants.SCENE_EXECUTE, data, true,
                     sessionContext.getAccessToken());
             return convertHdlResponse(resp, "场景执行成功",
                     ROUTE_SCENE_EXECUTE, BROADCAST_SCENE_EXECUTE);
         } catch (Exception e) {
-            log.error("[HdlApiService] 执行场景异常: sceneId={}", sceneId, e);
+            log.error("[HdlApiService] 执行场景异常: sceneId={}", sceneIds, e);
             return ToolResultVO.failure(CODE_OPERATION_FAILED, "操作失败: " + e.getMessage());
         }
     }
@@ -544,11 +607,9 @@ public class HdlApiService implements HdlApiPort {
                 body.put("homeId", sessionContext.getHouseId());
             }
 
-            // HDL scene/add API 期望字段名为 sceneList 而非 functions
-            // 将 functions 重命名为 sceneList，避免 "场景列表不能为空" 错误
-            if (body.containsKey("functions")) {
-                body.put("sceneList", body.remove("functions"));
-            }
+            // HDL scene/add API 期望顶层字段为 scenes（场景数组），
+            // 每个场景对象含 name/gatewayId/collect/executePush/functions。
+            // body 由 SceneTool 按此结构构建，此处无需再做字段重命名。
 
             HdlResponse resp = hdlApiClient.post(HdlApiConstants.SCENE_ADD, body, true,
                     sessionContext.getAccessToken());
@@ -656,7 +717,7 @@ public class HdlApiService implements HdlApiPort {
      */
     @Override
     public ToolResultVO addCart(String skuId, String productId, int quantity,
-                                 String erpNo, SessionContext sessionContext) {
+                                String erpNo, SessionContext sessionContext) {
         try {
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("skuId", skuId);
@@ -848,7 +909,7 @@ public class HdlApiService implements HdlApiPort {
      * @return ToolResultVO 实例
      */
     private ToolResultVO buildSuccessResult(String message, Object data,
-                                             String routePath, String broadcastText) {
+                                            String routePath, String broadcastText) {
         return ToolResultVO.success(message, data, routePath, broadcastText);
     }
 
@@ -905,7 +966,7 @@ public class HdlApiService implements HdlApiPort {
      * @return ToolResultVO 实例
      */
     private ToolResultVO convertHdlResponse(HdlResponse resp, String successMsg,
-                                             String routePath, String broadcastMsg) {
+                                            String routePath, String broadcastMsg) {
         if (resp != null && resp.success()) {
             return buildSuccessResult(successMsg, resp.getData(), routePath, broadcastMsg);
         }

@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -41,7 +42,7 @@ public class SceneController {
 
     @PostMapping("/list")
     public ToolResultVO listScenes(@RequestHeader("X-Session-Token") String sessionToken,
-                                    @RequestBody(required = false) Map<String, Object> body) {
+                                   @RequestBody(required = false) Map<String, Object> body) {
         SessionContext ctx = resolveContext(sessionToken);
         if (ctx == null) return ToolResultVO.failure(401, "未登录或会话已过期");
         String homeId = body != null ? (String) body.get("homeId") : null;
@@ -51,17 +52,17 @@ public class SceneController {
 
     @PostMapping("/execute")
     public ToolResultVO executeScene(@RequestHeader("X-Session-Token") String sessionToken,
-                                      @RequestBody Map<String, Object> body) {
+                                     @RequestBody Map<String, Object> body) {
         SessionContext ctx = resolveContext(sessionToken);
         if (ctx == null) return ToolResultVO.failure(401, "未登录或会话已过期");
         String sceneId = (String) body.get("sceneId");
         if (sceneId == null || sceneId.isBlank()) return ToolResultVO.failure(400, "缺少 sceneId");
-        return hdlApiPort.executeScene(sceneId, ctx);
+        return hdlApiPort.executeScene(List.of(sceneId), ctx);
     }
 
     @PostMapping("/detail")
     public ToolResultVO getSceneDetail(@RequestHeader("X-Session-Token") String sessionToken,
-                                        @RequestBody Map<String, Object> body) {
+                                       @RequestBody Map<String, Object> body) {
         SessionContext ctx = resolveContext(sessionToken);
         if (ctx == null) return ToolResultVO.failure(401, "未登录或会话已过期");
         // 复用场景列表查询（传 roomId 精确查找）
@@ -72,7 +73,7 @@ public class SceneController {
 
     @PostMapping("/delete")
     public ToolResultVO deleteScene(@RequestHeader("X-Session-Token") String sessionToken,
-                                     @RequestBody Map<String, Object> body) {
+                                    @RequestBody Map<String, Object> body) {
         SessionContext ctx = resolveContext(sessionToken);
         if (ctx == null) return ToolResultVO.failure(401, "未登录或会话已过期");
         String sceneId = (String) body.get("sceneId");
@@ -86,7 +87,7 @@ public class SceneController {
 
     @PostMapping("/create")
     public ToolResultVO createScene(@RequestHeader("X-Session-Token") String sessionToken,
-                                     @RequestBody Map<String, Object> body) {
+                                    @RequestBody Map<String, Object> body) {
         SessionContext ctx = resolveContext(sessionToken);
         if (ctx == null) return ToolResultVO.failure(401, "未登录或会话已过期");
         String sceneName = (String) body.get("sceneName");
@@ -96,7 +97,7 @@ public class SceneController {
 
     @PostMapping("/update")
     public ToolResultVO updateScene(@RequestHeader("X-Session-Token") String sessionToken,
-                                     @RequestBody Map<String, Object> body) {
+                                    @RequestBody Map<String, Object> body) {
         SessionContext ctx = resolveContext(sessionToken);
         if (ctx == null) return ToolResultVO.failure(401, "未登录或会话已过期");
         return hdlApiPort.createScene(body, ctx); // HDL scene/update 走相同的 create 逻辑

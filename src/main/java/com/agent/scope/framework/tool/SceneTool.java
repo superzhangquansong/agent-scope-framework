@@ -113,7 +113,7 @@ public class SceneTool extends AbstractTool {
     /**
      * 执行场景。
      *
-     * @param sceneId        场景 ID 或场景名称
+     * @param sceneIds        场景 ID 或场景名称
      * @param runtimeContext 运行时上下文（自动注入）
      * @return 工具结果 VO
      */
@@ -127,13 +127,13 @@ public class SceneTool extends AbstractTool {
             concurrencySafe = false)
     public ToolResultVO executeScene(
             @ToolParam(name = "sceneId", required = true,
-                    description = "场景ID或场景名称。示例：回家场景。从query_scene_list返回结果获取") String sceneId,
+                    description = "场景ID或场景名称。示例：回家场景。从query_scene_list返回结果获取") List<String> sceneIds,
             RuntimeContext runtimeContext) {
 
         SessionContext sessionContext = resolveSessionContext(runtimeContext);
-        log.info("[SceneTool] 执行场景: sceneId={}, userId={}",
-                sceneId, sessionContext.getUserId());
-        return hdlApiPort.executeScene(sceneId, sessionContext);
+        log.info("[SceneTool] 执行场景: sceneIds={}, userId={}",
+                sceneIds, sessionContext.getUserId());
+        return hdlApiPort.executeScene(sceneIds, sessionContext);
     }
 
     /**
@@ -168,9 +168,7 @@ public class SceneTool extends AbstractTool {
             @ToolParam(name = "functionsJson", required = true,
                     description = "设备动作JSON数组字符串。格式：[{\"sid\":\"<query_device_list返回的设备SID>\",\"spk\":\"<query_device_list返回的spk>\",\"userInput\":\"用户对该设备的控制描述\",\"delaySeconds\":0}]。sid和spk从query_device_list响应获取，禁止编造或使用任何示例值") String functionsJson,
             @ToolParam(name = "collect", required = false,
-                    description = "是否收藏场景。默认false") Boolean collect,
-            @ToolParam(name = "delaySeconds", required = false,
-                    description = "场景级延迟执行秒数。默认0") Integer delaySeconds,
+                    description = "是否收藏场景。默认false（0）") Boolean collect,
             @ToolParam(name = "executePush", required = false,
                     description = "是否推送执行结果通知。默认false") Boolean executePush,
             RuntimeContext runtimeContext) {
@@ -232,26 +230,30 @@ public class SceneTool extends AbstractTool {
                 status.add(attr);
             }
 
-            // 构建 function
-            Map<String, Object> function = new LinkedHashMap<>(4);
+            // 构建 function（HDL 报文仅需 sid/delaySeconds/status，spk 仅用于属性解析不进入报文）
+            Map<String, Object> function = new LinkedHashMap<>(3);
             function.put("sid", sid);
-            function.put("spk", spk);
-            function.put("status", status);
             function.put("delaySeconds", fnDelaySeconds);
+            function.put("status", status);
             functions.add(function);
 
             log.info("[SceneTool] 场景设备属性解析: sid={}, spk={}, userInput={}, attrs={}",
                     sid, spk, userInput, attrMap);
         }
 
-        // 3. 构建场景创建请求体
-        Map<String, Object> body = new LinkedHashMap<>(6);
-        body.put("sceneName", sceneName);
-        body.put("gatewayId", gatewayId);
-        body.put("functions", functions);
-        body.put("collect", collect != null ? collect : false);
-        body.put("delaySeconds", delaySeconds != null ? delaySeconds : DEFAULT_DELAY_SECONDS);
-        body.put("executePush", executePush != null ? executePush : false);
+        // 3. 构建场景创建请求体（HDL scene/add 报文：顶层 scenes 数组包裹场景对象）
+        Map<String, Object> scene = new LinkedHashMap<>(5);
+        scene.put("name", sceneName);
+        scene.put("gatewayId", gatewayId);
+        scene.put("collect", Boolean.TRUE.equals(collect) ? 1 : 0);
+        scene.put("executePush", executePush != null ? executePush : false);
+        scene.put("functions", functions);
+
+        List<Map<String, Object>> scenes = new ArrayList<>(1);
+        scenes.add(scene);
+
+        Map<String, Object> body = new LinkedHashMap<>(1);
+        body.put("scenes", scenes);
 
         // 4. 调用 HDL API 创建场景
         return hdlApiPort.createScene(body, sessionContext);
@@ -352,12 +354,11 @@ public class SceneTool extends AbstractTool {
                 status.add(attr);
             }
 
-            // 构建 function
-            Map<String, Object> function = new LinkedHashMap<>(4);
+            // 构建 function（HDL 报文仅需 sid/delaySeconds/status，spk 仅用于匹配不进入报文）
+            Map<String, Object> function = new LinkedHashMap<>(3);
             function.put("sid", deviceSid);
-            function.put("spk", deviceSpk);
-            function.put("status", status);
             function.put("delaySeconds", DEFAULT_DELAY_SECONDS);
+            function.put("status", status);
             functions.add(function);
 
             log.info("[SceneTool] 模板场景设备匹配: name={}, spk={}, sid={}, attrs={}",
@@ -371,17 +372,22 @@ public class SceneTool extends AbstractTool {
             return ToolResultVO.failure(400, "无法获取网关 ID，请确认设备列表包含 gatewayId 字段");
         }
 
-        // 5. 构建场景创建请求体
+        // 5. 构建场景创建请求体（HDL scene/add 报文：顶层 scenes 数组包裹场景对象）
         String sceneName = (customName != null && !customName.isBlank())
                 ? customName : template.getSceneName();
 
-        Map<String, Object> body = new LinkedHashMap<>(6);
-        body.put("sceneName", sceneName);
-        body.put("gatewayId", gatewayId);
-        body.put("functions", functions);
-        body.put("collect", false);
-        body.put("delaySeconds", DEFAULT_DELAY_SECONDS);
-        body.put("executePush", false);
+        Map<String, Object> scene = new LinkedHashMap<>(4);
+        scene.put("name", sceneName);
+        scene.put("gatewayId", gatewayId);
+        scene.put("collect", 0);
+        scene.put("executePush", false);
+        scene.put("functions", functions);
+
+        List<Map<String, Object>> scenes = new ArrayList<>(1);
+        scenes.add(scene);
+
+        Map<String, Object> body = new LinkedHashMap<>(1);
+        body.put("scenes", scenes);
 
         log.info("[SceneTool] 模板场景创建请求: sceneName={}, templateCode={}, functions={}",
                 sceneName, templateCode, functions.size());

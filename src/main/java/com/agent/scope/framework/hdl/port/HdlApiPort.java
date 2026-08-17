@@ -101,11 +101,11 @@ public interface HdlApiPort {
     /**
      * 执行场景。
      *
-     * @param sceneId        场景 ID
+     * @param sceneIds        场景 ID
      * @param sessionContext 会话上下文
      * @return 工具结果 VO
      */
-    ToolResultVO executeScene(String sceneId, SessionContext sessionContext);
+    ToolResultVO executeScene(List<String> sceneIds, SessionContext sessionContext);
 
     /**
      * 创建场景。
