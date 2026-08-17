@@ -554,7 +554,17 @@ public class HdlApiService implements HdlApiPort {
 
             HdlResponse resp = hdlApiClient.post(HdlApiConstants.SCENE_LIST, data, true,
                     sessionContext.getAccessToken());
-            return convertHdlResponse(resp, "查询场景列表成功",
+            if (!resp.success()) {
+                log.warn("[HdlApiService] 查询场景列表失败: code={}, msg={}", resp.getCode(), resp.getMsg());
+                return ToolResultVO.failure(CODE_OPERATION_FAILED,
+                        resp.getMsg() != null ? resp.getMsg() : "查询场景列表失败");
+            }
+            // 提取场景列表并包装为前端 SceneListPage 期望的 {scenes: [...], total: ...} 结构
+            List<Map<String, Object>> sceneList = extractListFromResponse(resp);
+            Map<String, Object> resultData = new LinkedHashMap<>();
+            resultData.put("scenes", sceneList);
+            resultData.put("total", sceneList.size());
+            return buildSuccessResult("查询场景列表成功", resultData,
                     ROUTE_SCENE_LIST, BROADCAST_SCENE_LIST);
         } catch (Exception e) {
             log.error("[HdlApiService] 查询场景列表异常", e);
