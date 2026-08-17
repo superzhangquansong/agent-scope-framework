@@ -4,7 +4,7 @@ import {
   SlidersHorizontal, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import DeviceImage from './DeviceImage';
-import { getDeviceDetail, getDeviceList } from '../api/client';
+import { getDeviceDetail, getDeviceDetails, getDeviceList } from '../api/client';
 import { extractDeviceAttrs, DeviceControlPanel } from './DeviceStatusPage';
 import {
   ATTR_ON_OFF,
@@ -133,7 +133,7 @@ export default function DeviceListPage({ data, onDeviceDetail }: DeviceListPageP
   }, []);
 
   /**
-   * 重新查询单个设备的最新状态。
+   * 重新查询单个设备的最新状态（卡片刷新按钮使用）。
    *
    * 调用 getDeviceDetail REST API 获取设备详情，
    * 返回的 status 字段是设备当前真实状态值。
@@ -177,7 +177,8 @@ export default function DeviceListPage({ data, onDeviceDetail }: DeviceListPageP
   /**
    * 批量重新查询所有设备的最新状态。
    *
-   * 并行调用 getDeviceDetail，将结果存入 refreshedDevices。
+   * 一次性批量调用 getDeviceDetails（逗号分隔 deviceIds，一次请求），
+   * 避免对每个设备逐个并发调用 getDeviceDetail 造成 N 次 /device/info 请求。
    * 使用 originalDevicesRef 避免 props 引用变化导致重复触发。
    * 通过 skipLoaded 标记控制是否跳过已加载的状态（首次加载必查，手动刷新必查）。
    */
@@ -189,20 +190,45 @@ export default function DeviceListPage({ data, onDeviceDetail }: DeviceListPageP
     if (devices.length === 0) return;
     setGlobalRefreshing(true);
     try {
-      const results = await Promise.all(
-        devices.map(d => refreshDevice(d).then(r => [String(d.deviceId ?? ''), r] as const))
-      );
-      const map: Record<string, DeviceItem> = {};
-      for (const [id, dev] of results) {
-        if (dev) map[id] = dev;
+      // 收集所有有效 deviceId，一次批量查询（后端 /device/info 支持批量 deviceIds）
+      const deviceIds = devices
+        .map(d => String(d.deviceId ?? ''))
+        .filter(id => id && id !== '-');
+      if (deviceIds.length === 0) return;
+      const res = await getDeviceDetails({ deviceIds: deviceIds.join(',') });
+      if (res.success && res.data) {
+        const list = Array.isArray(res.data) ? res.data : [];
+        // 建立 deviceId -> 原始设备映射，用于补齐详情中缺失的 gatewayId/spk 等字段
+        const origMap: Record<string, DeviceItem> = {};
+        for (const d of devices) {
+          const id = String(d.deviceId ?? '');
+          if (id && id !== '-') origMap[id] = d;
+        }
+        const map: Record<string, DeviceItem> = {};
+        for (const dev of list) {
+          const d = dev as unknown as Record<string, unknown>;
+          const id = String(d.deviceId ?? '');
+          const orig = origMap[id];
+          if (!id || !orig) continue;
+          map[id] = {
+            ...orig,
+            ...d,
+            name: (d.name as string) ?? orig.name ?? (d.deviceName as string),
+            gatewayId: (d.gatewayId as string) ?? orig.gatewayId,
+            spk: (d.spk as string) ?? orig.spk,
+            online: (d.online as boolean) ?? orig.online,
+            status: (d.status as DeviceItem['status']) ?? orig.status,
+            attributes: (d.attributes as DeviceItem['attributes']) ?? orig.attributes,
+          };
+        }
+        setRefreshedDevices(map);
+        // 标记已加载，后续不再重复查询
+        initialLoadedRef.current = true;
       }
-      setRefreshedDevices(map);
-      // 标记已加载，后续不再重复查询
-      initialLoadedRef.current = true;
     } finally {
       setGlobalRefreshing(false);
     }
-  }, [refreshDevice, globalRefreshing]);
+  }, [globalRefreshing]);
 
   // 挂载时自动重新查询所有设备状态（只查一次）
   // 依赖空数组确保只在组件挂载时执行一次

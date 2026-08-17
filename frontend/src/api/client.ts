@@ -735,6 +735,14 @@ export async function getDeviceDetail(req: {
   return postJson<DeviceDetailData>(API_PATH.DEVICE_DETAIL, req as unknown as Record<string, unknown>, signal);
 }
 
+/** 批量查询设备详情（逗号分隔 deviceIds，一次请求）。后端 /device/info 支持批量 deviceIds */
+export async function getDeviceDetails(req: {
+  deviceIds: string;
+  gatewayId?: string;
+}, signal?: AbortSignal) {
+  return postJson<DeviceDetailData[]>(API_PATH.DEVICE_DETAIL, req as unknown as Record<string, unknown>, signal);
+}
+
 /** 查询当前房屋设备列表（REST 直调，不走 SSE） */
 export async function getDeviceList(signal?: AbortSignal): Promise<ApiResult<{ devices: DeviceDetailData[]; total: number }>> {
   return postJson<{ devices: DeviceDetailData[]; total: number }>(API_PATH.DEVICE_LIST, {}, signal);
