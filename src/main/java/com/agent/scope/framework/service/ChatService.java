@@ -20,7 +20,6 @@ import com.agent.scope.framework.vo.ToolResultVO;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.agentscope.core.ReActAgent;
 import io.agentscope.core.agent.RuntimeContext;
-import io.agentscope.core.event.AgentEndEvent;
 import io.agentscope.core.event.AgentEvent;
 import io.agentscope.core.event.ConfirmResult;
 import io.agentscope.core.message.*;
@@ -419,8 +418,8 @@ public class ChatService {
             log.info("[Chat] [计时] confirmAndResume 准备阶段: sessionId={}, 构建耗时={}ms, confirmCount={}",
                     sessionId, tBeforeSubscribe - tStart, confirmResults.size());
 
-            sendEvent(emitter, SSE_EVENT_AGENT_START, sessionId, Map.of());
-
+            // agent_start 事件由 AgentStartHandler 统一发送（框架产出 AgentStartEvent 时触发），
+            // 此处不再手动发送，避免前端收到重复事件
             activeEmitters.put(sessionId, emitter);
 
             // 同步权限上下文（Nacos 热更新）：恢复执行前确保 AgentState 的权限上下文
@@ -724,8 +723,8 @@ public class ChatService {
             // 异步保存用户输入消息（不阻塞主流程）
             chatRecordService.saveUserMessage(sessionId, userId, houseId, dto.getUserMessage());
 
-            sendEvent(emitter, SSE_EVENT_AGENT_START, sessionId, Map.of());
-
+            // agent_start 事件由 AgentStartHandler 统一发送（框架产出 AgentStartEvent 时触发），
+            // 此处不再手动发送，避免前端收到重复事件
             activeEmitters.put(sessionId, emitter);
 
             // 同步权限上下文（Nacos 热更新）：确保 AgentState 的 PermissionContextState
@@ -1151,18 +1150,16 @@ public class ChatService {
 
         boolean handled = agentEventHandlerRegistry.dispatch(ctx, event);
 
-        // 兜底：未注册处理器的事件（AgentStartEvent/ExceedMaxItersEvent/AgentEndEvent 等）
-        if (!handled && !(event instanceof AgentEndEvent)) {
+        // 兜底：未注册处理器的事件走 OTHER 统一转发
+        // AgentStartEvent/AgentEndEvent/ExceedMaxItersEvent 等均已注册对应 Handler，
+        // 不再需要 instanceof 特殊排除，统一走 dispatch 分发链路
+        if (!handled) {
             AgentOtherEventBO eventBO = AgentOtherEventBO.builder()
                     .type(event.getClass().getSimpleName())
                     .sessionId(sessionId)
                     .eventType(event.getType() != null ? event.getType().name() : "UNKNOWN")
                     .build();
             emitter.send(SseEmitter.event().name(eventBO.getType()).data(toJson(eventBO)));
-        }
-
-        if (event instanceof AgentEndEvent) {
-            log.info("[Chat] 收到 AgentEndEvent，等待 doOnComplete 关闭 SSE: sessionId={}", sessionId);
         }
 
         log.debug("[SSE] 转发Agent事件: sessionId={}, eventType={}",

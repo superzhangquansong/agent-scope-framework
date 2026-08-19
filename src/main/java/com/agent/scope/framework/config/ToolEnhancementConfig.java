@@ -10,6 +10,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 
 import java.time.Duration;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -89,6 +90,31 @@ public class ToolEnhancementConfig {
         private static final String CACHE_KEY_PREFIX = "tool_cache:";
 
         /**
+         * 缓存 value 最大字节数（5KB）。
+         * <p>超过此大小的工具结果不缓存，避免大 JSON（如设备列表、知识库检索结果）
+         * 占用 Redis 内存。这些大结果已有独立的缓存机制（如 DeviceContextService 的 device_cache）
+         * 或已通过 ToolResultEviction 卸载到工作区文件。</p>
+         */
+        private static final int MAX_CACHE_SIZE_BYTES = 5 * 1024;
+
+        /**
+         * 排除缓存的工具名集合。
+         * <p>这些工具的返回结果较大或有独立缓存机制，不需要在 ToolResultCache 中重复缓存：</p>
+         * <ul>
+         *   <li>query_device_list —— 已由 DeviceContextService.device_cache 独立缓存精简结果</li>
+         *   <li>query_device_detail —— 单设备详情，变化频繁</li>
+         *   <li>http_request —— 返回值可能很大且不可预测</li>
+         *   <li>query_knowledge —— 知识库检索结果由 RAG 独立管理</li>
+         * </ul>
+         */
+        private static final Set<String> EXCLUDED_TOOLS = Set.of(
+                "query_device_list",
+                "query_device_detail",
+                "http_request",
+                "query_knowledge"
+        );
+
+        /**
          * 构造函数
          *
          * @param redisTemplate Redis 模板
@@ -108,6 +134,10 @@ public class ToolEnhancementConfig {
          */
         @SuppressWarnings("unchecked")
         public Object get(String toolName, Map<String, Object> params) {
+            // 排除列表中的工具直接跳过缓存
+            if (EXCLUDED_TOOLS.contains(toolName)) {
+                return null;
+            }
             String key = buildCacheKey(toolName, params);
             Object result = redisTemplate.opsForValue().get(key);
             if (result != null) {
@@ -117,13 +147,32 @@ public class ToolEnhancementConfig {
         }
 
         /**
-         * 写入缓存
+         * 写入缓存。
+         * <p>排除大结果工具和超过 5KB 的结果，避免 Redis 内存膨胀。</p>
          *
          * @param toolName 工具名称
          * @param params   工具参数
          * @param result   工具结果
          */
         public void put(String toolName, Map<String, Object> params, Object result) {
+            // 排除列表中的工具不缓存
+            if (EXCLUDED_TOOLS.contains(toolName)) {
+                log.debug("[ToolResultCache] 工具在排除列表中，跳过缓存: tool={}", toolName);
+                return;
+            }
+            // 检查序列化后的大小，超过 5KB 不缓存
+            try {
+                String json = com.alibaba.fastjson2.JSON.toJSONString(result);
+                if (json.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > MAX_CACHE_SIZE_BYTES) {
+                    log.debug("[ToolResultCache] 结果超过 {}KB，跳过缓存: tool={}, size={}bytes",
+                            MAX_CACHE_SIZE_BYTES / 1024, toolName, json.length());
+                    return;
+                }
+            } catch (Exception e) {
+                log.debug("[ToolResultCache] 结果序列化失败，跳过缓存: tool={}, error={}",
+                        toolName, e.getMessage());
+                return;
+            }
             String key = buildCacheKey(toolName, params);
             redisTemplate.opsForValue().set(key, result, ttl);
             log.debug("[ToolResultCache] 缓存写入: tool={}, ttl={}s", toolName, ttl.getSeconds());

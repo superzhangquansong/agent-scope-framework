@@ -1,6 +1,8 @@
 package com.agent.scope.framework.config;
 
 import com.agent.scope.framework.config.properties.AgentScopeProperties;
+import io.agentscope.harness.agent.filesystem.AbstractFilesystem;
+import io.agentscope.harness.agent.filesystem.spec.RemoteFilesystemSpec;
 import io.agentscope.harness.agent.middleware.PlanModeMiddleware;
 import io.agentscope.harness.agent.workspace.WorkspaceManager;
 import io.agentscope.harness.agent.workspace.plan.PlanModeManager;
@@ -29,6 +31,17 @@ import java.util.Set;
  * 状态持久化于 {@link io.agentscope.core.state.PlanModeContextState}，支持分布式场景。
  * {@link PlanModeMiddleware} 在 {@code onActing} 阶段确定性拦截变更工具。
  * </p>
+ * <p>
+ * <b>分布式改造（MinIO）</b>：计划模式管理器不再使用 {@code new WorkspaceManager(本地path)} 纯本地模式，
+ * 而是优先通过 {@link RemoteFilesystemSpec#toFilesystem} 构建基于 MinIO BaseStore 的
+ * {@link AbstractFilesystem}，使 {@code plans/} 计划文件持久化到 MinIO，多副本共享。
+ * 未装配分布式文件系统时降级为本地磁盘（开发环境）。
+ * </p>
+ * <p>
+ * 依赖注入说明：此处注入 {@link RemoteFilesystemSpec}（由 FilesystemConfig 装配，MinIO/Redis BaseStore），
+ * 而非 HarnessAgent —— 避免与 HarnessAgentConfig（scopeHarnessAgent → Optional&lt;PlanModeManager&gt;）
+ * 产生循环依赖。
+ * </p>
  *
  * @author zqs
  * @since 2.0.0
@@ -50,21 +63,39 @@ public class PlanModeConfig {
      * 计划模式管理器 Bean。
      * <p>
      * 协调计划模式的状态转换，计划文件持久化于工作区 {@code plans/} 子目录。
+     * 优先使用 MinIO 分布式文件系统（多副本共享），降级本地磁盘（开发环境）。
      * </p>
      *
-     * @param agentWorkspacePath 工作区路径
+     * @param agentWorkspacePath  工作区路径（由 WorkspaceConfig 注入）
+     * @param remoteFilesystemSpec 分布式文件系统规范（由 FilesystemConfig 注入，MinIO/Redis BaseStore）
      * @return 计划模式管理器（可能为空，表示工作区未启用）
      */
     @Bean
-    public Optional<PlanModeManager> planModeManager(Optional<Path> agentWorkspacePath) {
+    public Optional<PlanModeManager> planModeManager(Optional<Path> agentWorkspacePath,
+                                                     Optional<RemoteFilesystemSpec> remoteFilesystemSpec) {
         if (agentWorkspacePath.isEmpty()) {
             log.warn("[PlanModeConfig] 工作区未启用，计划模式无法装配");
             return Optional.empty();
         }
-        Path planDir = agentWorkspacePath.get().resolve("plans");
-        WorkspaceManager workspaceManager = new WorkspaceManager(agentWorkspacePath.get());
+
+        Path workspacePath = agentWorkspacePath.get();
+        WorkspaceManager workspaceManager;
+        if (remoteFilesystemSpec.isPresent()) {
+            // 分布式模式：toFilesystem 构建基于 MinIO BaseStore 的 AbstractFilesystem，
+            // WorkspaceManager 两层读（MinIO 覆盖层 + 本地兜底层），plans/ 持久化到 MinIO
+            AbstractFilesystem filesystem = remoteFilesystemSpec.get().toFilesystem(
+                    workspacePath, properties.getHarnessAgentName(), null);
+            workspaceManager = new WorkspaceManager(workspacePath, filesystem);
+            log.info("[PlanModeConfig] 计划模式管理器已装配（分布式文件系统）: planDir={}",
+                    workspacePath.resolve("plans").toAbsolutePath());
+        } else {
+            // 降级：本地磁盘模式（开发环境）
+            workspaceManager = new WorkspaceManager(workspacePath);
+            log.warn("[PlanModeConfig] 计划模式管理器已装配（本地降级，未装配分布式文件系统）: planDir={}",
+                    workspacePath.resolve("plans").toAbsolutePath());
+        }
+
         PlanModeManager manager = new PlanModeManager(workspaceManager, "plans");
-        log.info("[PlanModeConfig] 计划模式管理器已装配: planDir={}", planDir.toAbsolutePath());
         return Optional.of(manager);
     }
 

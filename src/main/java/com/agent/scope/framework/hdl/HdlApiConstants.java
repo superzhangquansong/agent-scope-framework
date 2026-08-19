@@ -57,6 +57,8 @@ public final class HdlApiConstants {
     public static final String FIELD_LOGIN_PWD = "loginPwd";
     public static final String FIELD_GRANT_TYPE = "grantType";
     public static final String FIELD_EXPIRES_IN = "expiresIn";
+    /** 刷新令牌有效期字段名（HDL 登录/刷新接口返回） */
+    public static final String FIELD_REFRESH_EXPIRES_IN = "refreshExpiresIn";
     public static final String FIELD_HOME_ID = "homeId";
     public static final String FIELD_HOME_NAME = "homeName";
     public static final String FIELD_HOME_TYPE = "homeType";

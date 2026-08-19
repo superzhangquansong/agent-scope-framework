@@ -31,6 +31,20 @@ public class UserSession implements Serializable {
     /** HDL 刷新令牌 */
     private String hdlRefreshToken;
 
+    /**
+     * HDL 访问令牌绝对过期时间戳（毫秒）。
+     * <p>登录/刷新成功后由 {@code loginTime + expiresIn * 1000} 计算得出，
+     * {@link #isHdlAccessTokenExpired()} 据此判断是否需要刷新。</p>
+     */
+    private long hdlAccessTokenExpiresAt;
+
+    /**
+     * HDL 刷新令牌绝对过期时间戳（毫秒）。
+     * <p>登录/刷新成功后由 {@code loginTime + refreshExpiresIn * 1000} 计算得出，
+     * 过期后需通知前端重新登录。</p>
+     */
+    private long hdlRefreshTokenExpiresAt;
+
     /** 登录用户名 */
     private String loginName;
 
@@ -69,9 +83,41 @@ public class UserSession implements Serializable {
         return hdlAccessToken != null && !hdlAccessToken.isEmpty();
     }
 
+    /**
+     * 判断 HDL 访问令牌是否已过期。
+     * <p>过期时间未设置（=0）时视为未过期，兼容旧会话数据；
+     * 提前 60 秒判定过期，避免请求到达 HDL 网关时恰好失效。</p>
+     *
+     * @return true 表示访问令牌已过期，需调用 refreshToken 刷新
+     */
+    @JsonIgnore
+    public boolean isHdlAccessTokenExpired() {
+        if (hdlAccessTokenExpiresAt <= 0) {
+            return false;
+        }
+        return System.currentTimeMillis() >= (hdlAccessTokenExpiresAt - 60_000L);
+    }
+
+    /**
+     * 判断 HDL 刷新令牌是否已过期。
+     * <p>过期时间未设置（=0）时视为未过期，兼容旧会话数据；
+     * 刷新令牌过期后无法再获取新的访问令牌，必须通知前端重新登录。</p>
+     *
+     * @return true 表示刷新令牌已过期，需通知前端重新登录
+     */
+    @JsonIgnore
+    public boolean isHdlRefreshTokenExpired() {
+        if (hdlRefreshTokenExpiresAt <= 0) {
+            return false;
+        }
+        return System.currentTimeMillis() >= hdlRefreshTokenExpiresAt;
+    }
+
     /** 清空 Token（保留会话和缓存） */
     public void clearToken() {
         this.hdlAccessToken = null;
         this.hdlRefreshToken = null;
+        this.hdlAccessTokenExpiresAt = 0;
+        this.hdlRefreshTokenExpiresAt = 0;
     }
 }

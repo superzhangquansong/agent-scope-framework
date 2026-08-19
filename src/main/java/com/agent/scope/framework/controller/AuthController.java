@@ -1,5 +1,6 @@
 package com.agent.scope.framework.controller;
 
+import com.agent.scope.framework.annotation.ValidToken;
 import com.agent.scope.framework.exception.BusinessException;
 import com.agent.scope.framework.exception.ErrorCode;
 import com.agent.scope.framework.hdl.HdlHome;
@@ -69,8 +70,11 @@ public class AuthController {
             LoginResult data = new LoginResult()
                     .setSessionToken(session.getSessionToken())
                     .setLoginName(loginName)
-                    .setExpiresIn(hdlLoginResult.getExpiresIn());
-            log.info("[AuthController] 登录成功: loginName={}, token={}", loginName, session.getSessionToken());
+                    .setExpiresIn(hdlLoginResult.getExpiresIn())
+                    .setRefreshExpiresIn(hdlLoginResult.getRefreshExpiresIn());
+            log.info("[AuthController] 登录成功: loginName={}, token={}, expiresIn={}s, refreshExpiresIn={}s",
+                    loginName, session.getSessionToken(),
+                    hdlLoginResult.getExpiresIn(), hdlLoginResult.getRefreshExpiresIn());
             return Response.success(data);
         }
 
@@ -100,7 +104,11 @@ public class AuthController {
      *
      * <p>已登录但无房屋缓存 → 自动查询房屋列表；
      * 已登录但未选房屋 → needSelectHome=true。</p>
+     *
+     * <p>标注 {@link ValidToken}：TokenAspect 在方法执行前自动检测访问令牌是否过期，
+     * 过期则调用 {@link HdlIotService#refreshToken} 刷新，刷新令牌也过期则抛 401。</p>
      */
+    @ValidToken
     @GetMapping("/status")
     public Response<SessionStatus> status(@RequestHeader(value = HEADER_SESSION_TOKEN, required = false) String token) {
         if (token == null || token.isEmpty()) {
@@ -146,7 +154,11 @@ public class AuthController {
 
     /**
      * 切换房屋。
+     *
+     * <p>标注 {@link ValidToken}：确保访问令牌在切换房屋前有效，
+     * 过期则自动刷新，避免后续设备列表查询使用失效令牌。</p>
      */
+    @ValidToken
     @PostMapping("/switchHome")
     public Response<SessionStatus> switchHome(@RequestBody Map<String, String> body,
                                                @RequestHeader(value = HEADER_SESSION_TOKEN, required = false) String token) {

@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import {
   getSessionToken, setSessionToken, getSessionUuid, refreshSessionUuid,
+  setNeedLoginHandler,
   getStatus, getChatHistory, logout as apiLogout, type ChatHistoryItem,
   type ResultData,
   type AgentStepData,
@@ -578,6 +579,16 @@ export default function App() {
   // ===== 初始化：检查登录状态 =====
   useEffect(() => {
     refreshStatus();
+  }, []);
+
+  // ===== 注册全局 need_login 处理器（REST 请求 401 时触发）=====
+  // 当 postJson/getJson 收到 HTTP 401（刷新令牌过期），client.ts 调用此处理器
+  // 弹出 LoginModal，用户重新登录后继续操作
+  useEffect(() => {
+    setNeedLoginHandler(() => {
+      setLoginOpen(true);
+    });
+    return () => setNeedLoginHandler(null);
   }, []);
 
   // ===== 卸载时清理重发定时器 =====

@@ -1,73 +1,114 @@
 package com.agent.scope.framework.config;
 
+import com.agent.scope.framework.config.infrastructure.MinioBaseStore;
 import com.agent.scope.framework.config.properties.AgentScopeProperties;
-import com.agent.scope.framework.config.properties.MinioProperties;
+import io.agentscope.harness.agent.IsolationScope;
+import io.agentscope.harness.agent.filesystem.remote.store.BaseStore;
 import io.agentscope.harness.agent.filesystem.spec.LocalFilesystemSpec;
+import io.agentscope.harness.agent.filesystem.spec.RemoteFilesystemSpec;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.Optional;
+import org.springframework.context.annotation.Primary;
 
 /**
- * AgentScope 2.0 GA 特性二十：文件系统（FileSystem）配置
+ * AgentScope 2.0 GA 特性三十五：分布式工作区文件系统配置
  * <p>
- * 为 Agent 提供文件读写能力，支持本地文件系统与 MinIO 对象存储两种后端：
+ * 三种模式（按优先级从高到低）：
  * <ul>
- *   <li>{@code local}：{@link LocalFilesystemSpec}，读写本地工作区目录</li>
- *   <li>{@code minio}：MinIO 对象存储（通过自定义 RemoteFilesystemSpec 实现，按需启用）</li>
+ *   <li><b>minio</b>（生产首选）：{@link MinioBaseStore} + {@link RemoteFilesystemSpec}，
+ *       按 {@link IsolationScope#USER} 隔离，工作区文件持久化到 MinIO 对象存储。
+ *       按 TB 计费，远比 Redis 内存便宜，适合 MEMORY.md / memory/*.md 等长期累积文件。
+ *       通过 {@code scope.agentscope.minio.enabled=true} 开启。</li>
+ *   <li><b>redis</b>（默认）：{@link RemoteFilesystemSpec} + Redis {@link BaseStore}，
+ *       与 {@link StateStoreConfig} 共享同一份 RedisDistributedStore 后端。
+ *       适合快速部署、数据量不大的场景。</li>
+ *   <li><b>local</b>（开发降级）：{@link LocalFilesystemSpec}，单机本地磁盘存储。
+ *       仅适合单进程开发调试，多副本部署时各 Pod 独立工作区、记忆不共享。</li>
  * </ul>
  * </p>
- * <p>
- * 装配后 Agent 可通过 {@code FilesystemTool}（read_file/write_file/edit_file/grep/glob/ls）
- * 操作文件，支持代码解释器、文档处理等场景。
- * </p>
  *
- * @author zqs
+ * @author agent-scope-start
  * @since 2.0.0
  */
 @Slf4j
 @Configuration
 @RequiredArgsConstructor
-@ConditionalOnProperty(prefix = "scope.agentscope.filesystem", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class FilesystemConfig {
 
     private final AgentScopeProperties properties;
 
-    private final MinioProperties minioProperties;
-
     /**
-     * 文件系统规范 Bean。
+     * MinIO 分布式文件系统模式（生产首选）。
      * <p>
-     * 默认装配 {@link LocalFilesystemSpec}（无参构造）。
-     * 当 {@code scope.agentscope.filesystem.type=minio} 时，切换为 MinIO 对象存储后端
-     * （需 MinIO 服务可用）。
+     * 使用 {@link MinioBaseStore} 实现 BaseStore 接口，工作区文件（MEMORY.md /
+     * memory/*.md / sessions/*.log.jsonl 等）持久化到 MinIO 对象存储。
+     * 按 {@link IsolationScope#USER} 隔离命名空间，使同一用户跨会话、跨副本共享长期记忆。
+     * </p>
+     * <p>
+     * 标注 @Primary，当 minio.enabled=true 时优先于 redis 模式的 RemoteFilesystemSpec。
      * </p>
      *
-     * @param agentWorkspacePath 工作区路径（由 WorkspaceConfig 注入）
-     * @return 文件系统规范
+     * @return RemoteFilesystemSpec 实例（MinIO 后端）
      */
     @Bean
-    public Optional<LocalFilesystemSpec> filesystemSpec(Optional<Path> agentWorkspacePath) {
-        String fsType = properties.getAdvanced().getFilesystemType();
-        Path basePath = agentWorkspacePath.orElse(Paths.get("/tmp/agentscope-workspace"))
-                .resolve("workspace");
-
-        if ("minio".equalsIgnoreCase(fsType)) {
-            log.info("[FilesystemConfig] 装配 MinIO 文件系统: endpoint={}, bucket={}",
-                    minioProperties.getEndpoint(), minioProperties.getBucket());
-            // MinIO 文件系统需自定义 RemoteFilesystemSpec 实现，此处仅记录配置
-            // 实际 MinIO FilesystemSpec 需通过 RemoteSnapshotClient 适配，按需扩展
-            return Optional.empty();
-        }
-
-        // 默认本地文件系统（LocalFilesystemSpec 仅提供无参构造）
-        LocalFilesystemSpec spec = new LocalFilesystemSpec();
-        log.info("[FilesystemConfig] 装配本地文件系统: basePath={}", basePath.toAbsolutePath());
-        return Optional.of(spec);
+    @ConditionalOnProperty(prefix = "scope.agentscope.minio", name = "enabled", havingValue = "true")
+    @Primary
+    public RemoteFilesystemSpec minioFilesystemSpec() {
+        AgentScopeProperties.Minio minioCfg = properties.getMinio();
+        MinioBaseStore minioStore = new MinioBaseStore(
+                minioCfg.getEndpoint(),
+                minioCfg.getAccessKey(),
+                minioCfg.getSecretKey(),
+                minioCfg.getBucket(),
+                minioCfg.getConnectTimeoutMs(),
+                minioCfg.getReadTimeoutMs());
+        RemoteFilesystemSpec spec = new RemoteFilesystemSpec(minioStore)
+                .isolationScope(IsolationScope.USER);
+        log.info("[FilesystemConfig] 创建 MinioBaseStore + RemoteFilesystemSpec: endpoint={}, bucket={}, IsolationScope.USER",
+                minioCfg.getEndpoint(), minioCfg.getBucket());
+        return spec;
     }
+
+    /**
+     * Redis 分布式文件系统模式（默认）。
+     * <p>
+     * 使用 {@link RemoteFilesystemSpec} + Redis {@link BaseStore}，按 {@link IsolationScope#USER}
+     * 隔离命名空间，使同一用户跨会话、跨副本共享同一份长期记忆（MEMORY.md）。
+     * </p>
+     * <p>
+     * BaseStore 由 {@link StateStoreConfig#baseStore} 提供，与 AgentStateStore 共享同一份 RedisDistributedStore。
+     * 当 minio.enabled=true 时被 @Primary 的 minioFilesystemSpec 覆盖，此 Bean 仍创建但不被装配。
+     * </p>
+     *
+     * @param baseStore Redis 文件存储后端
+     * @return RemoteFilesystemSpec 实例
+     */
+    @Bean
+    @ConditionalOnProperty(prefix = "scope.agentscope.filesystem", name = "type", havingValue = "redis", matchIfMissing = true)
+    public RemoteFilesystemSpec redisFilesystemSpec(BaseStore baseStore) {
+        RemoteFilesystemSpec spec = new RemoteFilesystemSpec(baseStore)
+                .isolationScope(IsolationScope.USER);
+        log.info("[FilesystemConfig] 创建 Redis BaseStore + RemoteFilesystemSpec（IsolationScope.USER）");
+        return spec;
+    }
+
+    /**
+     * 本地文件系统模式（开发降级）。
+     * <p>
+     * 单机开发场景使用，工作区文件直接读写本地磁盘。
+     * 生产环境必须使用 minio 或 redis 模式，否则多副本记忆不共享。
+     * </p>
+     *
+     * @return LocalFilesystemSpec 实例
+     */
+    @Bean
+    @ConditionalOnProperty(prefix = "scope.agentscope.filesystem", name = "type", havingValue = "local")
+    public LocalFilesystemSpec localFilesystemSpec() {
+        log.info("[FilesystemConfig] 创建 LocalFilesystemSpec（本地模式，仅开发用）");
+        return new LocalFilesystemSpec();
+    }
+
 }

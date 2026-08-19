@@ -35,6 +35,10 @@ public enum ErrorCode {
     SESSION_DESTROY_FAILED("SESSION_002", "销毁会话失败", 500),
     SESSION_LIST_FAILED("SESSION_003", "列出会话失败", 500),
     SESSION_CHECK_FAILED("SESSION_004", "检查会话存在性失败", 500),
+    /** 刷新令牌已过期，前端需重新登录（HTTP 401） */
+    SESSION_REFRESH_TOKEN_EXPIRED("SESSION_005", "刷新令牌已过期，请重新登录", 401),
+    /** 访问令牌无效或会话不存在（HTTP 401） */
+    SESSION_TOKEN_INVALID("SESSION_006", "访问令牌无效或会话已过期，请重新登录", 401),
 
     // ==================== 中断模块（INTERRUPT_4xx）====================
     INTERRUPT_PARAM_INVALID("INTERRUPT_001", "参数格式错误: userId应为纯数字, sessionId应为32位十六进制字符串", 400),

@@ -46,6 +46,31 @@ public enum AgentEventEnum {
     MODEL_CALL_END(13, "model_call_end"),
     /** 权限确认请求（HITL：需用户审批敏感工具调用） */
     PERMISSION_ASK(14, "permission_ask"),
+
+    // ==================== 以下为补充事件（对齐 AgentScope 2.0 完整事件列表）====================
+
+    /** 智能体开始新的回复（生命周期事件） */
+    AGENT_START(15, "agent_start"),
+    /** 智能体完成回复（生命周期事件） */
+    AGENT_END(16, "agent_end"),
+    /** 达到最大推理-执行迭代次数（生命周期事件） */
+    EXCEED_MAX_ITERS(17, "exceed_max_iters"),
+    /** 中间件或工具发起的提前停止请求（生命周期事件） */
+    REQUEST_STOP(18, "request_stop"),
+    /** 文本块开始（文本流式事件） */
+    TEXT_START(19, "text_start"),
+    /** 数据块开始——图片/音频/视频等多模态输出（数据流式事件） */
+    DATA_BLOCK_START(20, "data_block_start"),
+    /** 数据块增量——base64 编码数据（数据流式事件） */
+    DATA_BLOCK_DELTA(21, "data_block_delta"),
+    /** 数据块结束（数据流式事件） */
+    DATA_BLOCK_END(22, "data_block_end"),
+    /** 工具二进制数据输出增量（工具结果流式事件） */
+    TOOL_RESULT_DATA_DELTA(23, "tool_result_data_delta"),
+    /** 子 Agent 被暴露为用户可寻址的入口点（子 Agent 事件） */
+    SUBAGENT_EXPOSED(24, "subagent_exposed"),
+    /** 智能体暂停等待外部执行（人工介入事件） */
+    REQUIRE_EXTERNAL_EXECUTION(25, "require_external_execution"),
     ;
 
     /** 事件编码 */

@@ -27,4 +27,7 @@ public class LoginResult implements Serializable {
 
     /** 过期时间（秒） */
     private long expiresIn;
+
+    /** 刷新令牌过期时间（秒），刷新令牌过期后需重新登录 */
+    private long refreshExpiresIn;
 }

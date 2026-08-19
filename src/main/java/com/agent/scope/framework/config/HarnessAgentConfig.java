@@ -8,10 +8,13 @@ import io.agentscope.core.skill.repository.AgentSkillRepository;
 import io.agentscope.core.state.AgentStateStore;
 import io.agentscope.core.tool.Toolkit;
 import io.agentscope.extensions.model.dashscope.DashScopeChatModel;
+import io.agentscope.extensions.redis.RedisDistributedStore;
 import io.agentscope.extensions.sandbox.kubernetes.KubernetesFilesystemSpec;
 import io.agentscope.harness.agent.HarnessAgent;
 import io.agentscope.harness.agent.filesystem.spec.LocalFilesystemSpec;
+import io.agentscope.harness.agent.filesystem.spec.RemoteFilesystemSpec;
 import io.agentscope.harness.agent.memory.compaction.CompactionConfig;
+import io.agentscope.harness.agent.memory.compaction.ToolResultEvictionConfig;
 import io.agentscope.harness.agent.subagent.SubagentDeclaration;
 import io.agentscope.harness.agent.workspace.plan.PlanModeManager;
 import lombok.RequiredArgsConstructor;
@@ -120,8 +123,17 @@ public class HarnessAgentConfig {
     private final CompactionConfig compactionConfig;
 
     /**
+     * Redis 分布式存储后端（由 StateStoreConfig 注入）。
+     * <p>
+     * 同时提供 AgentStateStore + BaseStore + 沙箱快照，优先于 agentStateStore 装配。
+     * 用 {@code .distributedStore(...)} 装配后，状态存储与文件系统共享同一份 Redis 后端。
+     * </p>
+     */
+    private final Optional<RedisDistributedStore> redisDistributedStore;
+
+    /**
      * 分布式状态存储（由 StateStoreConfig 注入，Redis 分布式后端）
-     * 替代默认的 JsonFileAgentStateStore，支持跨节点会话恢复
+     * <p>当 redisDistributedStore 不存在时的降级路径</p>
      */
     private final Optional<AgentStateStore> agentStateStore;
 
@@ -144,11 +156,19 @@ public class HarnessAgentConfig {
     private final Optional<List<MiddlewareBase>> middlewareChain;
 
     /**
-     * 文件系统规范（由 FilesystemConfig 注入，特性20）
-     * 提供 Agent 文件读写能力（read_file/write_file/edit_file/grep/glob/ls）
-     * 通过 {@code builder.filesystem(fs)} 装配到 HarnessAgent。
+     * Redis 分布式文件系统规范（由 FilesystemConfig 注入，生产默认）。
+     * <p>
+     * 使 MEMORY.md / memory/*.md 等工作区文件持久化到 Redis，多副本共享长期记忆。
+     * 优先于 LocalFilesystemSpec 装配。
+     * </p>
      */
-    private final Optional<LocalFilesystemSpec> filesystemSpec;
+    private final Optional<RemoteFilesystemSpec> remoteFilesystemSpec;
+
+    /**
+     * 本地文件系统规范（由 FilesystemConfig 注入，开发降级）。
+     * <p>仅在 scope.agentscope.filesystem.type=local 时存在</p>
+     */
+    private final Optional<LocalFilesystemSpec> localFilesystemSpec;
 
     /**
      * 沙箱文件系统规范（由 SandboxConfig 注入，特性21/32）
@@ -226,10 +246,36 @@ public class HarnessAgentConfig {
                 .compaction(compactionConfig);
 
         // 特性6/34：分布式状态存储（Redis），替代默认 JsonFileAgentStateStore
-        agentStateStore.ifPresent(store -> {
-            builder.stateStore(store);
-            log.info("[HarnessAgentConfig] 已装配分布式状态存储: {}", store.getClass().getSimpleName());
-        });
+        // 优先使用 RedisDistributedStore（同时提供 AgentStateStore + BaseStore + 沙箱快照），
+        // 使状态存储与文件系统共享同一份 Redis 后端，多副本下记忆与状态不再割裂
+        if (redisDistributedStore.isPresent()) {
+            builder.distributedStore(redisDistributedStore.get());
+            log.info("[HarnessAgentConfig] 已装配 RedisDistributedStore（状态+文件系统共享后端）");
+        } else {
+            // 降级：仅装配 AgentStateStore（无 BaseStore，文件系统走本地）
+            agentStateStore.ifPresent(store -> {
+                builder.stateStore(store);
+                log.info("[HarnessAgentConfig] 已装配分布式状态存储（降级）: {}", store.getClass().getSimpleName());
+            });
+        }
+
+        // Token 优化：大工具结果卸载（ToolResultEvictionMiddleware）
+        // 单条工具结果超过阈值时自动写入工作区文件，上下文仅保留首尾预览 + read_file 路径提示，
+        // 避免大 JSON（设备列表/知识库检索/http_request 返回）撑爆上下文导致压缩频率飙升
+        AgentScopeProperties.Memory memCfg = properties.getMemory();
+        ToolResultEvictionConfig evictionConfig = ToolResultEvictionConfig.builder()
+                .maxResultChars(memCfg.getEvictionMaxResultChars())
+                .previewChars(memCfg.getEvictionPreviewChars())
+                .evictionPath(memCfg.getEvictionPath())
+                .build();
+        builder.toolResultEviction(evictionConfig);
+        log.info("[HarnessAgentConfig] 已装配大工具结果卸载: threshold={}chars, preview={}chars, path={}",
+                memCfg.getEvictionMaxResultChars(), memCfg.getEvictionPreviewChars(), memCfg.getEvictionPath());
+
+        // Token 优化：MEMORY.md 注入 system prompt 的 token 预算
+        // 超出预算时截断 MEMORY.md 并提示「用 memory_search 查更早」，避免长期记忆无限膨胀
+        builder.maxContextTokens(memCfg.getMaxContextTokens());
+        log.info("[HarnessAgentConfig] 已装配 MEMORY.md 注入预算: maxContextTokens={}", memCfg.getMaxContextTokens());
 
         // 特性18：工作区路径配置（严禁 .agentscope 文件夹）
         agentWorkspacePath.ifPresent(path -> {
@@ -253,15 +299,18 @@ public class HarnessAgentConfig {
             log.info("[HarnessAgentConfig] 已装配权限系统: mode={}", permCtx.getClass().getSimpleName());
         });
 
-        // 特性20/21/32：文件系统装配到 Builder
-        // 优先使用沙箱文件系统（K3s 安全执行 shell + 快照恢复），回退到本地文件系统
+        // 特性20/21/32/35：文件系统装配到 Builder
+        // 优先级：沙箱文件系统（K3s） > Redis 分布式文件系统 > 本地文件系统（开发降级）
         if (kubernetesFilesystemSpec.isPresent()) {
             builder.filesystem(kubernetesFilesystemSpec.get());
             log.info("[HarnessAgentConfig] 已装配沙箱文件系统（K8s）: {}", kubernetesFilesystemSpec.get().getClass().getSimpleName());
+        } else if (remoteFilesystemSpec.isPresent()) {
+            builder.filesystem(remoteFilesystemSpec.get());
+            log.info("[HarnessAgentConfig] 已装配 Redis 分布式文件系统: {}", remoteFilesystemSpec.get().getClass().getSimpleName());
         } else {
-            filesystemSpec.ifPresent(fs -> {
+            localFilesystemSpec.ifPresent(fs -> {
                 builder.filesystem(fs);
-                log.info("[HarnessAgentConfig] 已装配本地文件系统: {}", fs.getClass().getSimpleName());
+                log.info("[HarnessAgentConfig] 已装配本地文件系统（开发降级）: {}", fs.getClass().getSimpleName());
             });
         }
 

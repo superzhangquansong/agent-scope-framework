@@ -116,9 +116,10 @@ CREATE TABLE IF NOT EXISTS `task_queue_record` (
     `user_id`        VARCHAR(64)           DEFAULT NULL COMMENT '用户ID',
     `task_type`      VARCHAR(64)  NOT NULL COMMENT '任务类型',
     `payload`        MEDIUMTEXT            DEFAULT NULL COMMENT '任务载荷（JSON）',
-    `status`         VARCHAR(32)  NOT NULL DEFAULT 'PENDING' COMMENT '状态：PENDING/RUNNING/SUCCESS/FAILED/DEAD',
+    `status`         VARCHAR(32)  NOT NULL DEFAULT 'PENDING' COMMENT '状态：PENDING/RUNNING/COMPLETED/FAILED/DEAD',
     `retry_count`    INT                   DEFAULT 0    COMMENT '重试次数',
     `max_retry`      INT                   DEFAULT 3    COMMENT '最大重试次数',
+    `result`         MEDIUMTEXT            DEFAULT NULL COMMENT '任务执行结果',
     `error_message`  TEXT                  DEFAULT NULL COMMENT '错误信息',
     `create_time`    DATETIME     NOT NULL COMMENT '创建时间',
     `update_time`    DATETIME              DEFAULT NULL COMMENT '更新时间',
@@ -127,6 +128,9 @@ CREATE TABLE IF NOT EXISTS `task_queue_record` (
     KEY `idx_session_id` (`session_id`),
     KEY `idx_status`     (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='任务队列记录表';
+
+-- 若线上表已存在（无 result 字段），执行以下语句补充字段：
+-- ALTER TABLE `task_queue_record` ADD COLUMN `result` MEDIUMTEXT DEFAULT NULL COMMENT '任务执行结果' AFTER `max_retry`;
 
 -- -------------------------------------------------------------------
 -- 7. 场景模板表（场景推荐引擎：预置通用场景模板，按用户设备组合匹配推荐）

@@ -36,6 +36,8 @@ public class HdlIotService {
     private static final String FIELD_HOMES = "homes";
     private static final String FIELD_LIST = "list";
     private static final String FIELD_RECORDS = "records";
+    /** 默认刷新令牌有效期（秒），HDL 未返回时兜底 */
+    private static final long DEFAULT_REFRESH_EXPIRES_IN_SECONDS = 7 * 24 * 3600L;
 
     /** HDL API HTTP 客户端 */
     private final HdlApiClient apiClient;
@@ -62,19 +64,89 @@ public class HdlIotService {
             Object accessToken = dataMap.get(FIELD_ACCESS_TOKEN);
             Object refreshToken = dataMap.get(FIELD_REFRESH_TOKEN);
             if (accessToken != null) {
+                long now = System.currentTimeMillis();
+                long expiresIn = toLong(dataMap.get(HdlApiConstants.FIELD_EXPIRES_IN));
+                long refreshExpiresIn = toLong(dataMap.get(HdlApiConstants.FIELD_REFRESH_EXPIRES_IN));
+                // HDL 未返回 refreshExpiresIn 时使用默认值（7 天）
+                if (refreshExpiresIn <= 0) {
+                    refreshExpiresIn = DEFAULT_REFRESH_EXPIRES_IN_SECONDS;
+                }
                 session.setHdlAccessToken(accessToken.toString());
                 if (refreshToken != null) {
                     session.setHdlRefreshToken(refreshToken.toString());
                 }
+                // 计算并保存绝对过期时间戳（毫秒），供 TokenAspect 判断是否需要刷新/重新登录
+                session.setHdlAccessTokenExpiresAt(now + expiresIn * 1000L);
+                session.setHdlRefreshTokenExpiresAt(now + refreshExpiresIn * 1000L);
                 session.setLoginName(loginName);
                 result.setSuccess(true);
-                result.setExpiresIn(toLong(dataMap.get(HdlApiConstants.FIELD_EXPIRES_IN)));
-                log.info("[HdlIotService] 登录成功: loginName={}", loginName);
+                result.setExpiresIn(expiresIn);
+                result.setRefreshExpiresIn(refreshExpiresIn);
+                log.info("[HdlIotService] 登录成功: loginName={}, expiresIn={}s, refreshExpiresIn={}s",
+                        loginName, expiresIn, refreshExpiresIn);
                 return result;
             }
         }
         result.setSuccess(false);
         result.setMsg(resp.getMsg() != null ? resp.getMsg() : "用户名或密码不正确");
+        return result;
+    }
+
+    /**
+     * 使用刷新令牌获取新的访问令牌。
+     *
+     * <p>当 TokenAspect 检测到访问令牌过期但刷新令牌仍有效时调用此方法。
+     * 调用 HDL 后端 {@code /basis-footstone/user/oauth/login}，grantType=refresh_token，
+     * 成功后更新 session 中的 hdlAccessToken / hdlRefreshToken 及其过期时间。</p>
+     *
+     * @param session 用户会话（需包含 hdlRefreshToken）
+     * @return 刷新结果（success=true 表示刷新成功）
+     */
+    public LoginResult refreshToken(UserSession session) {
+        String refreshToken = session.getHdlRefreshToken();
+        if (refreshToken == null || refreshToken.isEmpty()) {
+            LoginResult result = new LoginResult();
+            result.setSuccess(false);
+            result.setMsg("刷新令牌不存在");
+            return result;
+        }
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put(HdlApiConstants.FIELD_GRANT_TYPE, HdlApiConstants.GRANT_TYPE_REFRESH_TOKEN);
+        data.put(FIELD_REFRESH_TOKEN, refreshToken);
+
+        // 刷新接口不需要鉴权（needAuth=false），但需要签名（needSign=true）
+        HdlResponse resp = apiClient.post(HdlApiConstants.REFRESH_TOKEN, data, true, false, null);
+        LoginResult result = new LoginResult();
+        Map<String, Object> dataMap = resp.getDataAsMap();
+        if (resp.success() && dataMap != null) {
+            Object accessToken = dataMap.get(FIELD_ACCESS_TOKEN);
+            if (accessToken != null) {
+                long now = System.currentTimeMillis();
+                long expiresIn = toLong(dataMap.get(HdlApiConstants.FIELD_EXPIRES_IN));
+                long refreshExpiresIn = toLong(dataMap.get(HdlApiConstants.FIELD_REFRESH_EXPIRES_IN));
+                if (refreshExpiresIn <= 0) {
+                    refreshExpiresIn = DEFAULT_REFRESH_EXPIRES_IN_SECONDS;
+                }
+                session.setHdlAccessToken(accessToken.toString());
+                // HDL 可能返回新的 refreshToken，若未返回则保留原有
+                Object newRefreshToken = dataMap.get(FIELD_REFRESH_TOKEN);
+                if (newRefreshToken != null) {
+                    session.setHdlRefreshToken(newRefreshToken.toString());
+                }
+                session.setHdlAccessTokenExpiresAt(now + expiresIn * 1000L);
+                session.setHdlRefreshTokenExpiresAt(now + refreshExpiresIn * 1000L);
+                result.setSuccess(true);
+                result.setExpiresIn(expiresIn);
+                result.setRefreshExpiresIn(refreshExpiresIn);
+                log.info("[HdlIotService] 刷新令牌成功: loginName={}, expiresIn={}s, refreshExpiresIn={}s",
+                        session.getLoginName(), expiresIn, refreshExpiresIn);
+                return result;
+            }
+        }
+        result.setSuccess(false);
+        result.setMsg(resp.getMsg() != null ? resp.getMsg() : "刷新令牌已过期");
+        log.warn("[HdlIotService] 刷新令牌失败: loginName={}, msg={}", session.getLoginName(), result.getMsg());
         return result;
     }
 
@@ -188,5 +260,7 @@ public class HdlIotService {
         private boolean success;
         private String msg;
         private long expiresIn;
+        /** 刷新令牌有效期（秒），用于计算刷新令牌过期时间 */
+        private long refreshExpiresIn;
     }
 }

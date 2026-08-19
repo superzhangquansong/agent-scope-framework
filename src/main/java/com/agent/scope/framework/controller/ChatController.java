@@ -5,6 +5,7 @@ import com.agent.scope.framework.dto.ChatStreamDTO;
 import com.agent.scope.framework.dto.PermissionConfirmDTO;
 import com.agent.scope.framework.exception.BusinessException;
 import com.agent.scope.framework.exception.ErrorCode;
+import com.agent.scope.framework.hdl.HdlIotService;
 import com.agent.scope.framework.model.UserSession;
 import com.agent.scope.framework.service.ChatService;
 import com.agent.scope.framework.service.SessionManager;
@@ -54,6 +55,8 @@ public class ChatController {
 
     private final SessionManager sessionManager;
 
+    private final HdlIotService hdlIotService;
+
 
     /**
      * SSE 流式接收响应。
@@ -74,6 +77,8 @@ public class ChatController {
         if (sessionToken != null && !sessionToken.isEmpty()) {
             UserSession session = sessionManager.getSession(sessionToken);
             if (session != null && session.isLoggedIn()) {
+                // 访问令牌过期时自动刷新（SSE 流启动前同步处理，避免流中 HDL API 401）
+                session = refreshTokenIfNeeded(session);
                 // 注入用户信息和 hdlAccessToken
                 dto.setUserId(session.getLoginName());
                 dto.setAccessToken(session.getHdlAccessToken());
@@ -146,6 +151,8 @@ public class ChatController {
         if (sessionToken != null && !sessionToken.isEmpty()) {
             UserSession session = sessionManager.getSession(sessionToken);
             if (session != null && session.isLoggedIn()) {
+                // 访问令牌过期时自动刷新（SSE 流启动前同步处理）
+                session = refreshTokenIfNeeded(session);
                 // 注入 userId 和 hdlAccessToken（若 DTO 中未传入）
                 if (dto.getUserId() == null || dto.getUserId().isEmpty()) {
                     dto.setUserId(session.getLoginName());
@@ -191,5 +198,55 @@ public class ChatController {
         }
 
         return emitter;
+    }
+
+    /**
+     * 检查并刷新过期的 HDL 访问令牌。
+     *
+     * <p>ChatController 因支持双重认证（X-Session-Token 或 Authorization 头），无法使用
+     * {@link com.agent.scope.framework.annotation.ValidToken} + {@link com.agent.scope.framework.config.TokenAspect}
+     * 的 AOP 拦截方式，改为在方法内同步调用本方法完成令牌刷新。</p>
+     *
+     * <p>刷新逻辑与 TokenAspect 一致：
+     * <ol>
+     *   <li>访问令牌未过期 → 原样返回</li>
+     *   <li>访问令牌过期、刷新令牌未过期 → 调用 HDL 刷新接口，保存 session 后返回</li>
+     *   <li>刷新令牌也过期 → 抛出 SESSION_REFRESH_TOKEN_EXPIRED，由 GlobalExceptionHandler 返回 401</li>
+     * </ol>
+     * </p>
+     *
+     * @param session 当前用户会话
+     * @return 令牌有效（原样或刷新后）的 session
+     * @throws BusinessException 刷新令牌过期时抛出 SESSION_REFRESH_TOKEN_EXPIRED
+     */
+    private UserSession refreshTokenIfNeeded(UserSession session) {
+        // 访问令牌未过期，直接返回
+        if (!session.isHdlAccessTokenExpired()) {
+            return session;
+        }
+        log.info("[Chat] 访问令牌已过期，尝试刷新: loginName={}", session.getLoginName());
+
+        // 刷新令牌也过期 → 通知前端重新登录
+        if (session.isHdlRefreshTokenExpired()) {
+            log.warn("[Chat] 刷新令牌已过期，需重新登录: loginName={}", session.getLoginName());
+            session.clearToken();
+            sessionManager.save(session);
+            throw new BusinessException(ErrorCode.SESSION_REFRESH_TOKEN_EXPIRED);
+        }
+
+        // 调用 HDL 刷新接口
+        HdlIotService.LoginResult refreshResult = hdlIotService.refreshToken(session);
+        if (!refreshResult.isSuccess()) {
+            log.warn("[Chat] 刷新令牌失败: loginName={}, msg={}",
+                    session.getLoginName(), refreshResult.getMsg());
+            session.clearToken();
+            sessionManager.save(session);
+            throw new BusinessException(ErrorCode.SESSION_REFRESH_TOKEN_EXPIRED, refreshResult.getMsg());
+        }
+
+        // 刷新成功 → 持久化新 session
+        sessionManager.save(session);
+        log.info("[Chat] 令牌刷新成功: loginName={}", session.getLoginName());
+        return session;
     }
 }

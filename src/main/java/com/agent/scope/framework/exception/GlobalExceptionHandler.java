@@ -5,6 +5,7 @@ import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -14,6 +15,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 
 import java.io.IOException;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -38,23 +41,53 @@ public class GlobalExceptionHandler {
     // ==================== 业务异常 ====================
 
     /**
-     * 处理业务异常。
-     * <p>
-     * 从 {@link BusinessException} 中提取 {@link ErrorCode} 的 HTTP 状态码作为响应码，
-     * 异常消息作为响应消息。
-     * </p>
+     * 处理业务异常（含会话令牌失效的特化分支）。
+     *
+     * <p>所有 {@link BusinessException} 均由本方法统一拦截：</p>
+     * <ul>
+     *   <li>SESSION_REFRESH_TOKEN_EXPIRED / SESSION_TOKEN_INVALID → 返回 HTTP 401，
+     *       body.data 注入 {@code needLogin: true} 标记，前端据此弹出登录框</li>
+     *   <li>其他 ErrorCode → 返回 HTTP 状态码由 ErrorCode.httpStatus 决定，
+     *       data 为 null</li>
+     * </ul>
+     *
+     * <p>使用 {@link ResponseEntity} 动态设置 HTTP 状态码，
+     * 因 {@code @ResponseStatus} 是编译期固定值，无法按 ErrorCode 运行时切换。</p>
      *
      * @param e 业务异常
-     * @return 统一错误响应
+     * @return 动态 HTTP 状态码的统一错误响应
      */
     @ExceptionHandler(BusinessException.class)
-    @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public Response<Void> handleBusinessException(BusinessException e) {
+    public ResponseEntity<Response<Map<String, Object>>> handleBusinessException(BusinessException e) {
         ErrorCode errorCode = e.getErrorCode();
-        int code = errorCode != null ? errorCode.getHttpStatus() : HttpStatus.BAD_REQUEST.value();
-        String message = e.getMessage();
-        log.error("[GlobalException] 业务异常: code={}, message={}", code, message, e);
-        return Response.error(code, message);
+        int httpStatus = errorCode != null ? errorCode.getHttpStatus() : HttpStatus.BAD_REQUEST.value();
+
+        // 会话令牌失效：data 注入 needLogin 标记，前端检测此字段触发登录框
+        if (errorCode == ErrorCode.SESSION_REFRESH_TOKEN_EXPIRED
+                || errorCode == ErrorCode.SESSION_TOKEN_INVALID) {
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("needLogin", true);
+            data.put("errorCode", errorCode.getCode());
+            log.warn("[GlobalException] 会话令牌失效: code={}, message={}",
+                    errorCode.getCode(), e.getMessage());
+            Response<Map<String, Object>> body = Response.<Map<String, Object>>builder()
+                    .code(httpStatus)
+                    .message(e.getMessage())
+                    .data(data)
+                    .success(false)
+                    .build();
+            return ResponseEntity.status(httpStatus).body(body);
+        }
+
+        // 通用业务异常：data 为 null，HTTP 状态码由 ErrorCode 决定
+        log.error("[GlobalException] 业务异常: code={}, message={}", httpStatus, e.getMessage(), e);
+        Response<Map<String, Object>> body = Response.<Map<String, Object>>builder()
+                .code(httpStatus)
+                .message(e.getMessage())
+                .data(null)
+                .success(false)
+                .build();
+        return ResponseEntity.status(httpStatus).body(body);
     }
 
     /**

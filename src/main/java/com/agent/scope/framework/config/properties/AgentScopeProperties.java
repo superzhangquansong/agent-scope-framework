@@ -73,6 +73,9 @@ public class AgentScopeProperties {
     /** Memory 配置 */
     private Memory memory = new Memory();
 
+    /** MinIO 对象存储配置（用于分布式文件系统 BaseStore） */
+    private Minio minio = new Minio();
+
     /** Advanced 高级特性配置 */
     private Advanced advanced = new Advanced();
 
@@ -208,11 +211,16 @@ public class AgentScopeProperties {
         /** 触发压缩的历史 token 阈值 */
         private int triggerTokens = 30000;
 
-        /** 压缩后保留最近的原文消息数 */
-        private int keepMessages = 5;
+        /** 压缩后保留最近的原文消息数（主导保留策略，设为 10 避免近期设备列表丢失） */
+        private int keepMessages = 10;
 
-        /** 压缩后保留最近的 token 数 */
-        private int keepTokens = 5000;
+        /**
+         * 压缩后保留最近的 token 预算。
+         * <p>非 0 时按 token 预算从尾部往前算，会覆盖 keepMessages。
+         * 设为 0 表示关闭 token 预算模式，由 keepMessages 条数主导，
+         * 避免两种策略同时生效导致语义歧义。</p>
+         */
+        private int keepTokens = 0;
 
         /** 压缩前把新事实写入日流水账 */
         private boolean flushBeforeCompact = true;
@@ -234,6 +242,54 @@ public class AgentScopeProperties {
 
         /** 卸载路径 */
         private String evictionPath = "memory/evicted/";
+
+        /**
+         * MEMORY.md 注入 system prompt 的 token 预算。
+         * <p>超出剩余预算时按字符截断 MEMORY.md 并提示「用 memory_search 查更早」，
+         * 避免长期记忆无限膨胀导致每轮 system prompt token 不可控。
+         * 官方默认 8000，按智能家居场景的设备列表体量适当下调。</p>
+         */
+        private int maxContextTokens = 4000;
+    }
+
+    /**
+     * MinIO 对象存储配置。
+     * <p>
+     * 用于分布式文件系统 BaseStore 后端，使 MEMORY.md / memory/*.md / sessions/*.log.jsonl
+     * 等工作区文件持久化到 MinIO 对象存储（按 TB 计费，远比 Redis 内存便宜）。
+     * </p>
+     */
+    @Data
+    public static class Minio {
+        /** MinIO 服务地址（含协议和端口，如 http://59.41.255.150:9000） */
+        private String endpoint = "";
+
+        /** 访问密钥 */
+        private String accessKey = "";
+
+        /** 秘密密钥 */
+        private String secretKey = "";
+
+        /** 存储桶名称（工作区文件全部存于此桶） */
+        private String bucket = "agentscope-workspace";
+
+        /** 是否启用 HTTPS（默认 false，endpoint 已含协议时此字段仅用于内部 HTTP 客户端） */
+        private boolean secure = false;
+
+        /** 连接超时时间（毫秒，默认 10000） */
+        private int connectTimeoutMs = 10000;
+
+        /** 读取超时时间（毫秒，默认 30000） */
+        private int readTimeoutMs = 30000;
+
+        /**
+         * 是否启用 MinIO 作为 BaseStore 后端。
+         * <p>
+         * true: FilesystemConfig 使用 MinioBaseStore（生产环境推荐）
+         * false: 降级使用 Redis BaseStore（由 RedisDistributedStore 提供）
+         * </p>
+         */
+        private boolean enabled = false;
     }
 
     /**
@@ -322,6 +378,13 @@ public class AgentScopeProperties {
     public static class StateStore {
         /** 状态存储类型：redis / memory / json-file */
         private String type = "redis";
+
+        /**
+         * AgentState 在 Redis 中的 TTL（天）。
+         * <p>7 天未活跃的会话自动从 Redis 清理，释放内存。
+         * 设为 0 表示永久驻留（不推荐，生产环境会导致内存无限增长）。</p>
+         */
+        private int stateTtlDays = 7;
     }
 
     /**
@@ -380,8 +443,12 @@ public class AgentScopeProperties {
         /** 工具执行超时时间（毫秒） */
         private long timeoutMs = 30000L;
 
-        /** 工具结果缓存 TTL（秒） */
-        private long cacheTtlSeconds = 300L;
+        /**
+         * 工具结果缓存 TTL（秒）。
+         * <p>从 300s 降为 60s：工具结果变化较快（如设备状态），短 TTL 保证数据新鲜度，
+         * 同时减少 Redis 内存占用（缓存驻留时间缩短 80%）。</p>
+         */
+        private long cacheTtlSeconds = 60L;
     }
 
     /**

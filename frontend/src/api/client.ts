@@ -75,6 +75,44 @@ export function setSessionToken(token: string | null) {
   }
 }
 
+// ===== 全局 need_login 处理器（REST 请求 401 时触发）=====
+
+/**
+ * 全局重新登录回调。
+ * <p>REST 请求（postJson/getJson）收到 HTTP 401 且 body.data.needLogin=true 时调用。
+ * 由 App 组件在挂载时通过 {@link setNeedLoginHandler} 注册，触发 LoginModal 弹出。</p>
+ */
+let needLoginHandler: (() => void) | null = null;
+
+/**
+ * 注册全局重新登录回调。
+ * @param handler 重新登录回调（清除 token、弹登录框等）
+ */
+export function setNeedLoginHandler(handler: (() => void) | null) {
+  needLoginHandler = handler;
+}
+
+/**
+ * 触发重新登录流程：清除本地 token 并调用全局处理器。
+ * <p>同时清除 sessionToken，避免后续请求继续携带过期令牌。</p>
+ */
+function triggerNeedLogin(): void {
+  setSessionToken(null);
+  if (needLoginHandler) {
+    needLoginHandler();
+  }
+}
+
+/**
+ * 检测响应是否为需要重新登录的 401 错误。
+ * @param result API 响应体
+ * @returns true 表示需要触发重新登录
+ */
+function isNeedLoginResponse(result: ApiResult<unknown>): boolean {
+  // HTTP 401 状态码或 body.code === 401 或 body.data.needLogin === true
+  return result.code === 401 || (result.data as Record<string, unknown> | undefined)?.needLogin === true;
+}
+
 // ===== API 路径常量（消除魔法字符串，便于维护）=====
 
 const API_PATH = {
@@ -330,7 +368,12 @@ async function postJson<T = unknown>(
       body: JSON.stringify(body),
       signal,
     });
-    return resp.json();
+    const result = await resp.json() as ApiResult<T>;
+    // 检测 401 重新登录信号（刷新令牌过期），触发全局 need_login 流程
+    if (isNeedLoginResponse(result)) {
+      triggerNeedLogin();
+    }
+    return result;
   } catch (e: unknown) {
     if (e instanceof DOMException && e.name === 'AbortError') {
       return { code: 0, message: '请求已取消', data: undefined as unknown as T, success: false };
@@ -354,7 +397,12 @@ async function getJson<T = unknown>(
   headers[API_KEY_HEADER] = API_KEY_VALUE;
   try {
     const resp = await fetch(`${API_BASE}${path}`, { headers, signal });
-    return resp.json();
+    const result = await resp.json() as ApiResult<T>;
+    // 检测 401 重新登录信号（刷新令牌过期），触发全局 need_login 流程
+    if (isNeedLoginResponse(result)) {
+      triggerNeedLogin();
+    }
+    return result;
   } catch (e: unknown) {
     if (e instanceof DOMException && e.name === 'AbortError') {
       return { code: 0, message: '请求已取消', data: undefined as unknown as T, success: false };
@@ -485,6 +533,14 @@ export async function sendChat(
     signal,
   });
 
+  // 检测 HTTP 401（刷新令牌过期）：SSE 流尚未启动，触发 need_login 回调
+  // 而非抛异常，使前端聊天组件能弹 LoginModal 并在登录后重发原消息
+  if (resp.status === 401) {
+    callbacks.onNeedLogin?.({ message: '登录已过期，请重新登录' });
+    triggerNeedLogin();
+    return;
+  }
+
   if (!resp.ok || !resp.body) {
     throw new Error(`HTTP ${resp.status}`);
   }
@@ -584,6 +640,13 @@ export async function confirmPermission(
     headers,
     body: JSON.stringify(body),
   });
+
+  // 检测 HTTP 401（刷新令牌过期）：SSE 流尚未启动，触发 need_login 回调
+  if (resp.status === 401) {
+    callbacks.onNeedLogin?.({ message: '登录已过期，请重新登录' });
+    triggerNeedLogin();
+    return;
+  }
 
   if (!resp.ok || !resp.body) {
     throw new Error(`HTTP ${resp.status}`);

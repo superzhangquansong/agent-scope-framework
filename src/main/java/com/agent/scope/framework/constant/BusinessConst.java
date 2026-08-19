@@ -55,14 +55,14 @@ public interface BusinessConst {
 
     // ==================== SSE 事件类型常量 ====================
 
-    /** SSE 事件类型：Agent 开始执行 */
-    String SSE_EVENT_AGENT_START = "agent_start";
     /** SSE 事件类型：Agent 执行结束 */
     String SSE_EVENT_AGENT_END = "agent_end";
     /** SSE 事件类型：错误 */
     String SSE_EVENT_ERROR = "error";
     /** SSE 事件类型：权限暂停（HITL 等待用户确认） */
     String SSE_EVENT_PERMISSION_PAUSED = "permission_paused";
+    /** SSE 事件类型：需要重新登录（刷新令牌过期，前端弹登录框） */
+    String SSE_EVENT_NEED_LOGIN = "need_login";
     /** SSE 权限暂停提示消息 */
     String MSG_PERMISSION_PAUSED = "操作需要您的确认，请点击下方按钮选择确认或取消";
     /** SSE 残留 ASKING 状态提示消息 */

@@ -97,6 +97,21 @@ public class DeviceTool extends AbstractTool {
         if (result.isSuccess() && result.getData() != null) {
             deviceContextService.cacheDeviceList(sessionContext.getHouseId(), result.getData());
         }
+        // Token 优化：原始 HDL API 返回含 attributes/status/roomInfos 等大量冗余字段，
+        // 单设备可达数百字符，50 设备的工具结果约 20K-50K 字符 ≈ 8000-20000 tokens。
+        // LLM 调用 batch_control_device 仅需 deviceId/name/spk/gatewayId/online 五个字段，
+        // 故将精简 DeviceBrief 列表作为 data 返回给 LLM（约 3K 字符），
+        // 完整原始数据放入 frontendExtra（@JsonIgnore，不序列化给 LLM）供前端渲染。
+        if (result.isSuccess() && result.getData() != null) {
+            List<DeviceContextService.DeviceBrief> briefs =
+                    deviceContextService.getCachedDeviceBriefs(sessionContext.getHouseId());
+            Map<String, Object> frontendExtra = new LinkedHashMap<>();
+            frontendExtra.put("fullDeviceList", result.getData());
+            result.setData(briefs);
+            result.setFrontendExtra(frontendExtra);
+            log.info("[DeviceTool] 设备列表精简返回: count={}, 原始数据已存 frontendExtra",
+                    briefs != null ? briefs.size() : 0);
+        }
         return result;
     }
 

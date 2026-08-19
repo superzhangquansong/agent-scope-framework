@@ -184,10 +184,11 @@ scope:
 
     # MinIO 对象存储配置
     minio:
-      endpoint: http://127.0.0.1:30102
+      enabled: ${MINIO_ENABLED:true}
+      endpoint: ${MINIO_ENDPOINT:http://127.0.0.1:30102}
       access-key: ${MINIO_ACCESS_KEY:hdl-minio-user}
       secret-key: ${MINIO_SECRET_KEY:hdl-minio-pass}
-      bucket: ai-scope-workspace
+      bucket: ${MINIO_BUCKET:ai-scope-workspace}
 
     # Embedding 配置
     embedding:
